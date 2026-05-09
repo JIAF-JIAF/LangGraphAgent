@@ -1,11 +1,11 @@
 """
 LangChain Agent 模块
 结合 LLM + Tools 的 Agent 实现
+
+注意：会话管理由上层 LangGraph 负责，此模块不维护对话历史。
 """
 
 from typing import Optional, Dict, Any, List
-from langchain_core.chat_history import InMemoryChatMessageHistory
-from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_classic.agents import create_tool_calling_agent, AgentExecutor
 
 
@@ -25,29 +25,12 @@ class Agent:
         self.prompt = options.get('prompt')
 
         self.verbose = True
-        self._chat_history_store: Dict[str, InMemoryChatMessageHistory] = {}
+        self._agent_executor = None
 
         self._build_agent()
 
-    def _get_chat_history(self, session_id: str) -> InMemoryChatMessageHistory:
-        """获取或创建会话历史。
-
-        Args:
-            session_id: 会话 ID
-
-        Returns:
-            对应会话 ID 的聊天历史记录对象
-        """
-        if session_id not in self._chat_history_store:
-            self._chat_history_store[session_id] = InMemoryChatMessageHistory()
-        return self._chat_history_store[session_id]
-
     def _build_agent(self):
-        """构建 Agent。
-
-        使用 create_tool_calling_agent 创建 agent，
-        并配置 RunnableWithMessageHistory 以支持多会话对话历史管理。
-        """
+        """构建 Agent"""
         tools = self._tools.copy()
 
         self._agent = create_tool_calling_agent(
@@ -63,30 +46,24 @@ class Agent:
             handle_parsing_errors=True
         )
 
-        self._agent_chain = RunnableWithMessageHistory(
-            self._agent_executor,
-            self._get_chat_history,
-            input_messages_key="input",
-            history_messages_key="chat_history"
-        )
-
-    def invoke(self, input: str, session_id: str = "default") -> Dict[str, Any]:
+    def invoke(self, input: str, session_id: str = "default", chat_history: List = None) -> Dict[str, Any]:
         """执行 Agent 处理用户输入。
 
         Args:
             input: 用户输入的文本
-            session_id: 会话 ID，用于管理对话历史，默认 "default"
+            session_id: 会话 ID（当前不使用，由上层 LangGraph 管理）
+            chat_history: 对话历史列表，由 LangGraph 传入
 
         Returns:
             包含 answer、intermediate_steps 和 tool_messages 的字典
         """
-        result = self._agent_chain.invoke(
-            {"input": input},
-            config={"configurable": {"session_id": session_id}}
-        )
+        result = self._agent_executor.invoke({
+            "input": input,
+            "chat_history": chat_history or []
+        })
 
         return {
-            "answer": result["output"] if hasattr(result, 'output') else str(result),
+            "answer": result.get("output", str(result)),
             "intermediate_steps": result.get("intermediate_steps", []),
             "tool_messages": []
         }

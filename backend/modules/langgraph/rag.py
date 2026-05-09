@@ -155,11 +155,17 @@ class RAGWorkflow:
 
         self.memory.add_message(session_id, "human", query)
 
-        generator = BaseGenerator(
-            llm_client=self.llm_client,
-            config=self.config.get("generator", {})
-        )
-        answer = generator.generate(query, documents)
+        # generator = BaseGenerator(
+        #     llm_client=self.llm_client,
+        #     config=self.config.get("generator", {})
+        # )
+        # answer = generator.generate(query, documents)
+
+        if not documents:
+            answer = "未找到相关知识"
+        else:
+            context = "\n\n".join([doc.page_content for doc in documents])
+            answer = context
 
         self.memory.add_message(session_id, "assistant", answer)
 

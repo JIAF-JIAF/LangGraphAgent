@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 from modules.ai_client import AIClient
 from modules.langgraph import LangGraphAgent, RAGWorkflow
+from modules.langgraph.checkpoint import MemorySaver
 from modules.assistant import Agent as LangChainAgent
 from modules.prompt import create_few_shot_prompt
 from modules.rate_limit import RateLimiter
@@ -82,10 +83,14 @@ def init_system():
 
     print("\n[4/4] 初始化 LangGraph 调度层...")
     try:
+        # 根据配置选择 checkpointer
+        # 生产环境可以替换为 RedisSaver 或其他持久化方案
+        checkpointer = MemorySaver()
+        
         assistant_instance = LangGraphAgent(
-            llm_client=ai_client,
-            langchain_agent=langchain_agent,
-            rag_workflow=rag_workflow
+            agent=langchain_agent,
+            rag_workflow=rag_workflow,
+            checkpointer=checkpointer
         )
         print("LangGraph 调度层初始化完成")
     except Exception as e:
@@ -132,11 +137,11 @@ def chat():
         print("\n[对话请求] Session: {}".format(session_id), flush=True)
         print("用户: {}".format(user_message), flush=True)
 
-        result = assistant_instance.process_message(session_id, user_message)
+        result = assistant_instance.invoke(user_message, session_id)
 
         response = {
-            "reply": result.get("content", ""),
-            "tool_calls": result.get("tool_calls", []),
+            "reply": result.get("answer", ""),
+            "tool_calls": [],
             "session_id": session_id,
             "finished": False
         }
