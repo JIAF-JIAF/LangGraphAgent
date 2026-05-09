@@ -8,6 +8,7 @@ RAG 业务模块
 import time
 from typing import Optional, Dict, Any, List
 from langchain_core.documents import Document
+from langchain_core.messages import HumanMessage
 
 from modules.rag.indexer import ChromaIndexer
 from modules.rag.retriever import SimpleVectorRetriever
@@ -122,9 +123,47 @@ class RAGWorkflow:
             return True
         return False
 
+    def _expand_query(self, query: str) -> list:
+        """
+        扩展用户查询，生成多个相关查询词
+
+        Args:
+            query: 用户原始查询
+
+        Returns:
+            查询词列表（包含原始查询和扩展查询）
+        """
+        if not self.llm_client:
+            return [query]
+
+        prompt = f"""
+        你是一个查询扩展专家，请根据用户的查询生成多个相关的查询词，用于检索知识库。
+
+        用户查询：{query}
+
+        请生成3-5个相关的查询词，每个查询词应该：
+        1. 与原始查询含义相同或相关
+        2. 使用不同的表达方式
+        3. 包含同义词或相关术语
+        4. 考虑可能的缩写或简称
+
+        请只返回查询词列表，每个查询词占一行，不要添加其他任何内容。
+        """
+
+        try:
+            response = self.llm_client.chat.invoke([HumanMessage(content=prompt)])
+            queries = [q.strip() for q in response.content.strip().split('\n') if q.strip()]
+            # 确保包含原始查询
+            if query not in queries:
+                queries.insert(0, query)
+            return queries[:5]  # 最多返回5个
+        except Exception as e:
+            self._log(f"[RAG] 查询扩展失败: {e}")
+            return [query]
+
     def retrieve(self, query: str) -> List[Document]:
         """
-        执行检索
+        执行检索（支持查询扩展）
 
         Args:
             query: 用户查询
@@ -134,7 +173,21 @@ class RAGWorkflow:
         """
         self._log(f"[RAG] 执行检索: {query[:30]}...")
 
-        documents = self.retriever.retrieve(query)
+        # 使用查询扩展
+        expanded_queries = self._expand_query(query)
+        self._log(f"[RAG] 扩展查询词: {expanded_queries}")
+
+        # 合并多次检索结果（去重）
+        all_documents = {}
+        for q in expanded_queries:
+            docs = self.retriever.retrieve(q)
+            for doc in docs:
+                # 使用文档内容作为key去重
+                key = doc.page_content[:50] if doc.page_content else str(id(doc))
+                if key not in all_documents:
+                    all_documents[key] = doc
+
+        documents = list(all_documents.values())
         self._log(f"[RAG] 检索到 {len(documents)} 个文档")
 
         return documents
