@@ -69,7 +69,6 @@ class MemorySaver(BaseCheckpointSaver):
         if checkpoint:
             history = self._history.get(key, [])
             metadata = history[-1][1] if history else CheckpointMetadata()
-            parent_config = history[-1][0].get("parent_config") if history else None
             return CheckpointTuple(config, checkpoint, metadata)
         return None
 

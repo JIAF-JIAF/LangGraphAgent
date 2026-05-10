@@ -14,8 +14,7 @@ class Agent:
 
     def __init__(
         self,
-        options: Optional[Dict] = None,
-        config_path: str = "config.json"
+        options: Optional[Dict] = None
     ):
         if options is None:
             options = {}

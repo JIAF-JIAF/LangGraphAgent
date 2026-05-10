@@ -17,7 +17,7 @@ from modules.checkpoint import MemorySaver
 from modules.assistant import Agent as LangChainAgent
 from modules.prompt import create_few_shot_prompt
 from modules.rate_limit import RateLimiter
-from mcp_module import MCPToolService, config
+from mcp_module import MCPToolService
 
 if sys.stdout.encoding != 'utf-8':
     import codecs
@@ -35,7 +35,7 @@ app.config['JSON_AS_ASCII'] = False
 app.config['JSONIFY_MIMETYPE'] = 'application/json; charset=utf-8'
 CORS(app)
 
-rate_limiter = RateLimiter(config_path="config.json")
+rate_limiter = RateLimiter()
 rate_limiter.init_app(app)
 
 assistant_instance = None
@@ -52,7 +52,7 @@ def init_system():
 
     print("\n[1/4] 初始化 AI 客户端...")
     try:
-        ai_client = AIClient(config_path="config.json")
+        ai_client = AIClient()
         print("AI 客户端初始化完成")
     except Exception as e:
         print("AI 客户端初始化失败: {}".format(e))

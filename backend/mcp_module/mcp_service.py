@@ -36,21 +36,17 @@ class MCPToolService:
     @staticmethod
     def get_tools_from_all_servers() -> List[Any]:
         """
-        从配置文件中所有启用的 MCP 服务器获取工具列表
-        
+        从配置中所有 MCP 服务器获取工具列表
+
         Returns:
-            合并后的工具列表（来自所有启用的 MCP 服务器）
+            合并后的工具列表（来自所有 MCP 服务器）
         """
         all_tools = []
-        
+
         for server_config in config.MCP_SERVERS:
-            if not server_config.get('enabled', True):
-                logger.logger.info(f"MCP 服务器 [{server_config['name']}] 已禁用，跳过")
-                continue
-            
             server_url = server_config['url']
             server_name = server_config['name']
-            
+
             try:
                 logger.logger.info(f"连接 MCP 服务器 [{server_name}]: {server_url}")
                 tools = MCPToolService._get_tools_from_server(server_url)
@@ -58,8 +54,8 @@ class MCPToolService:
                 all_tools.extend(tools)
             except Exception as e:
                 logger.logger.error(f"连接 MCP 服务器 [{server_name}] 失败: {str(e)}")
-        
-        logger.logger.info(f"共获取到 {len(all_tools)} 个工具（来自 {len([s for s in config.MCP_SERVERS if s.get('enabled')])} 个服务器）")
+
+        logger.logger.info(f"共获取到 {len(all_tools)} 个工具（来自 {len(config.MCP_SERVERS)} 个服务器）")
         return all_tools
 
     @staticmethod
