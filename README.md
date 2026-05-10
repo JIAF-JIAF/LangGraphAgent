@@ -13,6 +13,7 @@
 - **工具调用**: AI 自动判断并调用外部工具（天气查询、天气推荐、表单提交），支持链式调用
 - **MCP 架构**: 工具独立部署，支持多个 Agent 共享调用
 - **Streamable HTTP**: 基于 HTTP 的流式传输协议，支持实时响应
+- **情绪感知**: 基于关键词规则的情绪分析（default、upbeat、angry、cheerful、depressed、friendly），动态更新 Prompt
 - **FewShot 示例学习**: 基于 LengthBasedExampleSelector 的动态示例选择
 - **前后端分离**: React + Vite 前端 + Flask 后端
 - **模块化设计**: 清晰的后端架构，易于扩展
@@ -39,6 +40,9 @@ chart-flow-longchain/
 │   │   │   ├── __init__.py
 │   │   │   ├── agent.py       # LangGraph Agent（状态图定义）
 │   │   │   └── state.py       # 状态定义
+│   │   ├── feeling/           # 情绪感知模块
+│   │   │   ├── __init__.py
+│   │   │   └── detector.py    # 情绪检测器
 │   │   ├── rag/               # 模块化 RAG 框架（含 RAGWorkflow）
 │   │   │   ├── __init__.py
 │   │   │   ├── rag_chain.py   # RAG 链核心
@@ -125,15 +129,16 @@ chart-flow-longchain/
 ### 状态图结构
 
 ```
-START → router → ┌── 需要检索 ──→ retrieve → generate → call_model → END
-                 │
-                 └── 不需要检索 ──→ call_model → END
+START → feeling_detect → router → ┌── 需要检索 ──→ retrieve → generate → call_model → END
+                                  │
+                                  └── 不需要检索 ──→ call_model → END
 ```
 
 ### 核心节点
 
 | 节点 | 职责 | 说明 |
 |------|------|------|
+| feeling_detect | 情绪检测 | 分析用户输入的情绪状态（default、upbeat、angry、cheerful、depressed、friendly） |
 | router | 智能路由 | 判断是否需要检索、选择知识库 |
 | retrieve | 文档检索 | 从向量数据库检索相关文档（支持查询扩展） |
 | generate | 生成回答 | 基于检索文档生成 RAG 结果 |
@@ -145,10 +150,51 @@ START → router → ┌── 需要检索 ──→ retrieve → generate → 
 class AgentState(TypedDict):
     query: str                    # 用户查询
     session_id: str               # 会话 ID
+    feeling: dict                 # 情绪状态 {"feeling": str, "score": int}
     chat_history: List[BaseMessage] # 对话历史（统一管理）
     need_retrieve: bool           # 是否需要检索
     documents: List[Document]     # 检索到的文档
     answer: str                   # 生成的回答
+```
+
+## 情绪感知
+
+系统支持基于关键词规则的情绪分析，每次对话前自动检测用户情绪状态，并动态更新 Prompt 模板。
+
+### 情绪类型
+
+| 情绪 | 描述 | 示例 |
+|------|------|------|
+| `default` | 中性/普通状态 | "随便吧，都可以" |
+| `upbeat` | 积极向上 | "加油！我一定能做到" |
+| `angry` | 愤怒不满 | "我特别生气！" |
+| `cheerful` | 欢快喜悦 | "今天天气真好" |
+| `depressed` | 消极低落 | "我很难过" |
+| `friendly` | 友好亲切 | "谢谢你的帮助" |
+
+### 情绪配置
+
+每种情绪在 Prompt 中对应不同的 `roleSet` 和 `voiceStyle` 配置：
+
+```python
+MOODS = {
+    "default": {"roleSet": "", "voiceStyle": "chat"},
+    "upbeat": {"roleSet": "你觉得很开心...", "voiceStyle": "upbeat"},
+    "angry": {"roleSet": "你会安慰用户...", "voiceStyle": "friendly"},
+    "cheerful": {"roleSet": "你感到开心和兴奋...", "voiceStyle": "cheerful"},
+    "depressed": {"roleSet": "你会鼓励用户...", "voiceStyle": "friendly"},
+    "friendly": {"roleSet": "你感觉很友好...", "voiceStyle": "friendly"}
+}
+```
+
+### 工作流程
+
+```
+用户输入 → 情绪检测 → 情绪匹配 → 动态更新 Prompt → 调用 LLM → 返回结果
+              ↓
+         检测结果包含:
+         - feeling: 情绪类型
+         - score: 情绪分值 (1-10)
 ```
 
 ## 模块化 RAG 框架
@@ -354,6 +400,7 @@ APP_PORT = 5000
 ```json
 {
   "reply": "AI回复内容",
+  "feeling": {"feeling": "cheerful", "score": 3},
   "tool_calls": [],
   "session_id": "会话ID",
   "finished": false
@@ -432,7 +479,7 @@ def get_weather(city: str) -> str:
 
 ### 修改系统提示词
 
-编辑 `backend/modules/prompt/__init__.py` 中的 `CUSTOMER_SERVICE_PROMPT_TEMPLATE` 变量
+编辑 `backend/modules/prompt/__init__.py` 中的 `PromptClass` 类，可以修改 `SystemPrompt` 和 `MOODS` 配置
 
 ### 自定义 FewShot 示例
 

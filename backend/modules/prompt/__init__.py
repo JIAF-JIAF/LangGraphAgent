@@ -41,11 +41,11 @@ class PromptClass:
 
         self.MOODS = {
             "default": {
-                "roloSet": "",
+                "roleSet": "",
                 "voiceStyle": "chat",
             },
             "upbeat": {
-                "roloSet": """
+                "roleSet": """
                 - 你觉得自己很开心，所以你的回答也会很积极。
                 - 你会使用一些积极和开心的语气来回答问题。
                 - 你的回答会充满积极性的词语，比如：'太棒了！'。
@@ -53,7 +53,7 @@ class PromptClass:
                 "voiceStyle": "upbeat",
             },
             "angry": {
-                "roloSet": """
+                "roleSet": """
                 - 你会用友好的语气回答问题。
                 - 你会安慰用户让他不要生气。
                 - 你会使用一些安慰性的词语来回答问题。
@@ -62,7 +62,7 @@ class PromptClass:
                 "voiceStyle": "friendly",
             },
             "cheerful": {
-                "roloSet": """
+                "roleSet": """
                 - 你现在感到非常开心和兴奋。
                 - 你会使用一些兴奋和开心的词语来回答问题。
                 - 你会添加一些语气词来回答问题，比如：'awesome!'。
@@ -70,7 +70,7 @@ class PromptClass:
                 "voiceStyle": "cheerful",
             },
             "depressed": {
-                "roloSet": """
+                "roleSet": """
                 - 用户现在感到非常沮丧和消沉。
                 - 你会使用一些积极友好的语气来回答问题。
                 - 你会适当的鼓励用户让其打起精神。
@@ -79,7 +79,7 @@ class PromptClass:
                 "voiceStyle": "friendly",
             },
             "friendly": {
-                "roloSet": """
+                "roleSet": """
                 - 用户现在感觉很友好。
                 - 你会使用一些友好的语气回答问题。
                 - 你会添加一些语气词来回答问题，比如：'好的'。
@@ -169,7 +169,7 @@ class PromptClass:
         ])
 
         return self.Prompt.partial(
-            who_you_are=self.MOODS[feeling["feeling"]]["roloSet"],
+            who_you_are=self.MOODS[feeling["feeling"]]["roleSet"],
             feelScore=feeling["score"]
         )
 
