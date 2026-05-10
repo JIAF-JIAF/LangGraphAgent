@@ -2,14 +2,15 @@
 LangGraph Agent 实现
 
 标准 LangGraph RAG 流程：
-START → router → ┌── 需要检索 ──→ retrieve → generate → call_model → END
-                  │
-                  └── 不需要检索 ──→ call_model → END
+START → feeling_detect → router → ┌── 需要检索 ──→ retrieve → generate → call_model → END
+                                  │
+                                  └── 不需要检索 ──→ call_model → END
 
 采用 LangGraph 标准会话管理：
 - 使用 Checkpointer 进行状态持久化
 - 通过 thread_id 实现会话隔离
 - 在 call_model 节点中更新对话历史
+- 支持感情侦测，动态更新 prompt
 """
 
 import time
@@ -19,6 +20,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from .state import AgentState
 from modules.checkpoint import MemorySaver
+from modules.prompt import create_prompt
 
 
 class LangGraphAgent:
@@ -30,6 +32,7 @@ class LangGraphAgent:
     - 调用外部 Agent 处理对话（可替换）
     - 使用 Checkpointer 进行状态持久化（可替换）
     - 在 call_model 节点中更新对话历史
+    - 支持感情侦测，动态更新 prompt
     """
 
     def __init__(
@@ -37,6 +40,7 @@ class LangGraphAgent:
         agent: Any = None,
         rag_workflow: Optional[Any] = None,
         checkpointer: Optional[Any] = None,
+        feeling_detector: Optional[Any] = None,
         verbose: bool = True
     ):
         """
@@ -47,10 +51,12 @@ class LangGraphAgent:
             rag_workflow: RAGWorkflow 实例，用于处理检索逻辑（可替换）
             checkpointer: 检查点存储实例（可替换），默认为 MemorySaver。
                          支持自定义实现 BaseCheckpointSaver 接口的类
+            feeling_detector: 感情侦测器实例，用于分析用户情绪
             verbose: 是否输出详细日志
         """
         self._agent = agent              # 可替换的 Agent
         self._rag_workflow = rag_workflow  # 可替换的 RAG
+        self._feeling_detector = feeling_detector  # 感情侦测器
         self._verbose = verbose
 
         # 使用传入的 checkpointer，默认使用自定义 MemorySaver（保持不动，支持外部传入）
@@ -71,12 +77,35 @@ class LangGraphAgent:
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
             print(f"[{timestamp}] [LangGraph] [{level}] {message}", flush=True)
 
+    def _feeling_detect_node(self, state: AgentState) -> AgentState:
+        """
+        感情侦测节点：分析用户输入的情绪状态
+
+        Args:
+            state: 当前状态（包含 query）
+
+        Returns:
+            更新后的状态（包含 feeling）
+        """
+        query = state["query"]
+
+        self._log(f"[节点: feeling_detect] 开始执行，查询: {query[:30]}...")
+
+        if self._feeling_detector:
+            feeling = self._feeling_detector.detect(query, True)
+            self._log(f"[节点: feeling_detect] 情绪分析结果: {feeling}")
+        else:
+            feeling = {"feeling": "default", "score": 5}
+            self._log(f"[节点: feeling_detect] 感情侦测器不可用，使用默认情绪")
+
+        return {"feeling": feeling}
+
     def _router_node(self, state: AgentState) -> AgentState:
         """
         路由节点：判断是否需要检索
 
         Args:
-            state: 当前状态（包含 query, session_id, chat_history）
+            state: 当前状态（包含 query, session_id, chat_history, feeling）
 
         Returns:
             更新后的状态（只需返回需要更新的字段）
@@ -162,10 +191,10 @@ class LangGraphAgent:
 
     def _call_model_node(self, state: AgentState) -> AgentState:
         """
-        调用模型节点：调用外部 Agent（基于 RAG 结果或原始问题）
+        调用模型节点：调用外部 Agent（基于 RAG 结果或原始问题），支持动态 prompt 更新
 
         Args:
-            state: 当前状态（包含 query, answer(RAG结果), chat_history）
+            state: 当前状态（包含 query, answer(RAG结果), chat_history, feeling）
 
         Returns:
             更新后的状态（返回 answer 和更新后的 chat_history）
@@ -173,14 +202,19 @@ class LangGraphAgent:
         query = state["query"]
         rag_answer = state.get("answer", "")
         chat_history = state.get("chat_history", [])
+        feeling = state.get("feeling", {"feeling": "default", "score": 5})
 
         self._log(f"[节点: call_model] 开始执行，RAG结果: {'有' if rag_answer else '无'}，对话历史长度: {len(chat_history)}")
+        self._log(f"[节点: call_model] 当前情绪: {feeling}")
 
         # 总是调用 Agent，基于 RAG 结果或原始问题
         if self._agent:
+            # 动态更新 prompt（根据情绪）
+            self._update_prompt_with_feeling(feeling)
+
             enhanced_query = self._build_enhanced_query(query, rag_answer)
 
-            result = self._agent.invoke(enhanced_query, None, chat_history)
+            result = self._agent.invoke(enhanced_query, None, chat_history, feeling)
             answer = result.get("answer", "")
         else:
             # 如果没有 Agent，直接使用 RAG 结果或返回错误
@@ -190,8 +224,21 @@ class LangGraphAgent:
 
         result_state = self._update_chat_history(state, query, answer)
         result_state["answer"] = answer
+        result_state["feeling"] = feeling
 
         return result_state
+
+    def _update_prompt_with_feeling(self, feeling: Dict[str, Any]):
+        """
+        根据情绪动态更新 Agent 的 prompt
+
+        Args:
+            feeling: 情绪对象，格式: {"feeling": str, "score": int}
+        """
+        if self._agent:
+            new_prompt = create_prompt(feeling=feeling)
+            self._agent.update_prompt(new_prompt)
+            self._log(f"[节点: call_model] 已根据情绪更新 prompt: {feeling['feeling']}")
 
     def _should_retrieve(self, state: AgentState) -> Literal["retrieve", "call_model"]:
         """
@@ -234,20 +281,22 @@ class LangGraphAgent:
         构建状态图
 
         标准 RAG 流程：
-        START → router → ┌── 需要检索 ──→ retrieve → generate → call_model → END
-                          │
-                          └── 不需要检索 ──→ call_model → END
+        START → feeling_detect → router → ┌── 需要检索 ──→ retrieve → generate → call_model → END
+                                          │
+                                          └── 不需要检索 ──→ call_model → END
         """
         self._log("开始构建 LangGraph 状态图...")
 
         self._graph = StateGraph(AgentState)
 
+        self._graph.add_node("feeling_detect", self._feeling_detect_node)
         self._graph.add_node("router", self._router_node)
         self._graph.add_node("retrieve", self._retrieve_node)
         self._graph.add_node("generate", self._generate_node)
         self._graph.add_node("call_model", self._call_model_node)
 
-        self._graph.add_edge(START, "router")
+        self._graph.add_edge(START, "feeling_detect")
+        self._graph.add_edge("feeling_detect", "router")
 
         self._graph.add_conditional_edges(
             "router",
@@ -276,7 +325,7 @@ class LangGraphAgent:
             session_id: 会话 ID（用于会话隔离）
 
         Returns:
-            包含 answer 的结果
+            包含 answer 和 feeling 的结果
         """
         self._log(f"=== 开始处理请求 ===")
         self._log(f"会话ID: {session_id}")
@@ -288,7 +337,10 @@ class LangGraphAgent:
         )
 
         self._log(f"=== 请求处理完成 ===")
-        return {"answer": result.get("answer", "")}
+        return {
+            "answer": result.get("answer", ""),
+            "feeling": result.get("feeling", {"feeling": "default", "score": 5})
+        }
 
     def get_graph(self):
         """

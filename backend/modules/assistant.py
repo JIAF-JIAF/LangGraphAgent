@@ -22,6 +22,7 @@ class Agent:
         self.llm_client = options.get('aiClient')
         self._tools = options.get('tools', [])
         self.prompt = options.get('prompt')
+        self._feeling = None
 
         self.verbose = True
         self._agent_executor = None
@@ -45,17 +46,43 @@ class Agent:
             handle_parsing_errors=True
         )
 
-    def invoke(self, input: str, session_id: str = "default", chat_history: List = None) -> Dict[str, Any]:
+    def update_prompt(self, new_prompt):
+        """
+        动态更新提示模板
+
+        Args:
+            new_prompt: 新的 ChatPromptTemplate 实例
+        """
+        self.prompt = new_prompt
+        self._build_agent()
+        print(f"[Agent] Prompt 已更新")
+
+    def set_feeling(self, feeling: Dict[str, Any]):
+        """
+        设置当前情绪状态
+
+        Args:
+            feeling: 情绪对象，格式: {"feeling": str, "score": int}
+        """
+        self._feeling = feeling
+        print(f"[Agent] 情绪状态已设置: {feeling}")
+
+    def invoke(self, input: str, session_id: str = "default", chat_history: List = None, feeling: Dict[str, Any] = None) -> Dict[str, Any]:
         """执行 Agent 处理用户输入。
 
         Args:
             input: 用户输入的文本
             session_id: 会话 ID（当前不使用，由上层 LangGraph 管理）
             chat_history: 对话历史列表，由 LangGraph 传入
+            feeling: 情绪对象，格式: {"feeling": str, "score": int}
 
         Returns:
             包含 answer、intermediate_steps 和 tool_messages 的字典
         """
+        # 如果传入了情绪，更新当前情绪状态
+        if feeling:
+            self._feeling = feeling
+
         result = self._agent_executor.invoke({
             "input": input,
             "chat_history": chat_history or []
@@ -64,7 +91,8 @@ class Agent:
         return {
             "answer": result.get("output", str(result)),
             "intermediate_steps": result.get("intermediate_steps", []),
-            "tool_messages": []
+            "tool_messages": [],
+            "feeling": self._feeling
         }
 
     def process_message(self, session_id, user_message):

@@ -81,7 +81,7 @@ class MCPToolService:
             # 使用默认参数捕获当前迭代的值，避免闭包变量问题
             def create_tool_call(tool_name: str = name, url: str = server_url):
                 def call_tool(**kwargs):
-                    # 处理参数格式：可能是 {'kwargs': {...}} 或直接 {...}
+                    # 优先从 kwargs 取，没有就直接用
                     args = kwargs.get('kwargs', kwargs)
                     
                     async def _call():

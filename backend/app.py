@@ -15,7 +15,8 @@ from modules.ai_client import AIClient
 from modules.langgraph import LangGraphAgent, RAGWorkflow
 from modules.checkpoint import CheckpointFactory
 from modules.assistant import Agent as LangChainAgent
-from modules.prompt import create_few_shot_prompt
+from modules.prompt import create_prompt
+from modules.feeling import FeelingDetector
 from modules.rate_limit import RateLimiter
 from mcp_module import MCPToolService
 
@@ -50,7 +51,7 @@ def init_system():
     print("智能客服系统启动中... (LangGraph 版本)")
     print("=" * 50)
 
-    print("\n[1/4] 初始化 AI 客户端...")
+    print("\n[1/5] 初始化 AI 客户端...")
     try:
         ai_client = AIClient()
         print("AI 客户端初始化完成")
@@ -58,7 +59,15 @@ def init_system():
         print("AI 客户端初始化失败: {}".format(e))
         raise
 
-    print("\n[2/4] 初始化 RAG 工作流...")
+    print("\n[2/5] 初始化感情侦测器...")
+    try:
+        feeling_detector = FeelingDetector(llm_client=ai_client)
+        print("感情侦测器初始化完成")
+    except Exception as e:
+        print("感情侦测器初始化失败: {}".format(e))
+        feeling_detector = None
+
+    print("\n[3/5] 初始化 RAG 工作流...")
     try:
         rag_workflow = RAGWorkflow(llm_client=ai_client)
         rag_workflow.build_index()
@@ -67,12 +76,12 @@ def init_system():
         print("RAG 工作流初始化警告: {}".format(e))
         rag_workflow = None
 
-    print("\n[3/4] 初始化 LangChain Agent...")
+    print("\n[4/5] 初始化 LangChain Agent...")
     try:
         tools = MCPToolService.get_tools()
 
         langchain_agent = LangChainAgent(options={
-            "prompt": create_few_shot_prompt(),
+            "prompt": create_prompt(feeling={"feeling": "default", "score": 5}),
             "tools": tools,
             "aiClient": ai_client
         })
@@ -81,7 +90,7 @@ def init_system():
         print("LangChain Agent 初始化失败: {}".format(e))
         langchain_agent = None
 
-    print("\n[4/4] 初始化 LangGraph 调度层...")
+    print("\n[5/5] 初始化 LangGraph 调度层...")
     try:
         # CHECKPOINT_STORAGE: "redis" 或 "memory"（默认）
         checkpoint_storage = os.getenv("CHECKPOINT_STORAGE", "memory").lower()
@@ -92,7 +101,8 @@ def init_system():
         assistant_instance = LangGraphAgent(
             agent=langchain_agent,
             rag_workflow=rag_workflow,
-            checkpointer=checkpointer
+            checkpointer=checkpointer,
+            feeling_detector=feeling_detector
         )
         print("LangGraph 调度层初始化完成")
     except Exception as e:
@@ -117,7 +127,8 @@ def start():
         status = {
             "status": "ready",
             "message": "客服系统已就绪 (LangGraph 版本)",
-            "model": "qwen3.6-flash"
+            "model": "qwen3.6-flash",
+            "features": ["feeling_detection", "RAG", "tool_calling"]
         }
         return jsonify(status)
     except Exception as e:
@@ -145,7 +156,8 @@ def chat():
             "reply": result.get("answer", ""),
             "tool_calls": [],
             "session_id": session_id,
-            "finished": False
+            "finished": False,
+            "feeling": result.get("feeling", {"feeling": "default", "score": 5})
         }
 
         return jsonify(response)

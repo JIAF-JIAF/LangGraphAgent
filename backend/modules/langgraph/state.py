@@ -15,3 +15,4 @@ class AgentState(TypedDict):
     need_retrieve: bool  # 是否需要检索
     documents: List[Document]  # 检索到的文档
     answer: str  # 生成的回答
+    feeling: Dict[str, Any]  # 用户情绪状态 {"feeling": str, "score": int}
