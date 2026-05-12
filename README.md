@@ -316,7 +316,7 @@ npm run dev
 # AI API 配置
 API_KEY=your_api_key
 BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-MODEL=qwen3.6-flash
+MODEL=qwen3.5-flash
 EMBEDDING_MODEL=text-embedding-v3
 
 # 向量数据库配置

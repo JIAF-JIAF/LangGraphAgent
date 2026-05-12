@@ -1,6 +1,12 @@
 """
 检查点存储工厂类
-管理所有可用的检查点存储实现，支持注册和构建
+
+管理所有可用的检查点存储实现，支持注册和构建。
+
+核心功能：
+- 注册检查点存储类
+- 根据名称构建存储实例
+- 获取支持的存储类型列表
 """
 
 import os
@@ -11,7 +17,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 class CheckpointFactory:
     """
     检查点存储工厂类
-
+    
     管理所有可用的检查点存储实现，新的存储实现通过 CheckpointFactory.register() 注册。
     """
 
@@ -21,7 +27,7 @@ class CheckpointFactory:
     def register(cls, name: str, saver_class: Type[BaseCheckpointSaver]) -> None:
         """
         注册检查点存储类
-
+        
         Args:
             name: 存储类型名称，如 "memory"、"redis"
             saver_class: 继承自 BaseCheckpointSaver 的存储类
@@ -32,14 +38,14 @@ class CheckpointFactory:
     def build(cls, name: Optional[str] = None, **kwargs) -> BaseCheckpointSaver:
         """
         构建检查点存储实例
-
+        
         Args:
             name: 存储类型名称，如 "memory"、"redis"。默认为 None，从环境变量获取
             **kwargs: 传递给存储类的初始化参数
-
+            
         Returns:
             对应的检查点存储实例
-
+            
         Raises:
             ValueError: 如果存储类型不支持
         """
@@ -57,7 +63,7 @@ class CheckpointFactory:
     def get_supported_types(cls) -> list:
         """
         获取支持的检查点存储类型列表
-
+        
         Returns:
             支持的类型列表
         """
