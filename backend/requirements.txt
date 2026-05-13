@@ -32,3 +32,6 @@ sentence-transformers>=2.2.0
 
 # Redis 支持
 redis>=5.0.0
+
+# 钉钉 Stream API
+dingtalk-stream>=1.0.0
