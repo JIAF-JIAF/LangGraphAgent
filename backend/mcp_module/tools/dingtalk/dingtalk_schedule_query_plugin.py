@@ -52,6 +52,12 @@ from mcp_module.logger import info, error
             "type": "string",
             "description": "增量同步token",
             "required": False
+        },
+        {
+            "name": "user_id",
+            "type": "string",
+            "description": "用户ID，内部参数",
+            "required": False
         }
     ],
     return_type="string"
@@ -63,7 +69,8 @@ def query_dingtalk_schedule(
     maxResults: int = None, 
     maxAttendees: int = None, 
     nextToken: str = None, 
-    syncToken: str = None
+    syncToken: str = None,
+    user_id: str = None
     ) -> str:
     """查询钉钉日程"""
     info(f"[工具调用] query_dingtalk_schedule - 参数: timeMin={timeMin}, timeMax={timeMax}, showDeleted={showDeleted}, maxResults={maxResults}, maxAttendees={maxAttendees}, nextToken={nextToken}, syncToken={syncToken}")
@@ -75,7 +82,7 @@ def query_dingtalk_schedule(
         
         info(f"[工具执行] query_dingtalk_schedule - 正在获取用户unionId...")
         access_token = client.get_access_token()
-        unionId = client.get_union_id(access_token, client.get_current_user_id())
+        unionId = client.get_union_id(access_token, client.get_current_user_id(user_id))
         
         if not unionId:
             error(f"[工具返回] query_dingtalk_schedule - 失败: 未能获取到unionId")

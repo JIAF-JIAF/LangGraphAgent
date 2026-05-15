@@ -40,11 +40,17 @@ from mcp_module.logger import info, error
             "type": "string",
             "description": "操作者用户的unionId，可选参数",
             "required": False
+        },
+        {
+            "name": "user_id",
+            "type": "string",
+            "description": "用户ID，内部参数",
+            "required": False
         }
     ],
     return_type="string"
 )
-def create_dingtalk_todo(subject: str, dueTime: int = None, description: str = None, priority: int = 0, operatorId: str = None) -> str:
+def create_dingtalk_todo(subject: str, dueTime: int = None, description: str = None, priority: int = 0, operatorId: str = None, user_id: str = None) -> str:
     """创建钉钉待办事项"""
     info(f"[工具调用] create_dingtalk_todo - 参数: subject={subject}, dueTime={dueTime}, description={description}, priority={priority}, operatorId={operatorId}")
     
@@ -59,7 +65,7 @@ def create_dingtalk_todo(subject: str, dueTime: int = None, description: str = N
         access_token = client.get_access_token()
         
         info(f"[工具执行] create_dingtalk_todo - 正在获取用户unionId...")
-        unionId = client.get_union_id(access_token, client.get_current_user_id())
+        unionId = client.get_union_id(access_token, client.get_current_user_id(user_id))
         
         if not unionId:
             error(f"[工具返回] create_dingtalk_todo - 失败: 未能获取到unionId")

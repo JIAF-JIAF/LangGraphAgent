@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: chatbot-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chatbot-mcp
+    command: python mcp_module/start.py
+    ports:
+      - "8080:8080"
+    environment:
+      - API_KEY=${API_KEY}
+      - BASE_URL=${BASE_URL}
+      - MODEL=${MODEL:-qwen3.5-flash}
+      - DINGTALK_CLIENT_ID=${DINGTALK_CLIENT_ID}
+      - DINGTALK_CLIENT_SECRET=${DINGTALK_CLIENT_SECRET}
+      - DINGTALK_USER_ID=${DINGTALK_USER_ID}
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chatbot-app
+    depends_on:
+      redis:
+        condition: service_healthy
+      mcp:
+        condition: service_started
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./db/chroma:/app/db/chroma
+      - ./knowledge_base:/app/knowledge_base
+    environment:
+      - API_KEY=${API_KEY}
+      - BASE_URL=${BASE_URL}
+      - MODEL=${MODEL:-qwen3.5-flash}
+      - DINGTALK_CLIENT_ID=${DINGTALK_CLIENT_ID}
+      - DINGTALK_CLIENT_SECRET=${DINGTALK_CLIENT_SECRET}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_DB=${REDIS_DB:-0}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - CHECKPOINT_STORAGE=${CHECKPOINT_STORAGE:-redis}
+
+volumes:
+  redis-data:
+    driver: local

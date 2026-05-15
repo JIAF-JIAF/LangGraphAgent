@@ -18,16 +18,20 @@ class DingTalkClient:
         self.app_secret = os.getenv("DINGTALK_CLIENT_SECRET")
         self.user_id = os.getenv("DINGTALK_USER_ID")
     
-    def get_current_user_id(self) -> str:
+    def get_current_user_id(self, user_id: str = None) -> str:
         """
         获取当前用户 ID
         
-        优先从环境变量 DINGTALK_CURRENT_USER_ID 获取（运行时动态传入），
-        如果没有则使用配置文件中的 DINGTALK_USER_ID
+        优先级：参数传入 > 环境变量 DINGTALK_CURRENT_USER_ID > 配置文件中的 DINGTALK_USER_ID
         
+        Args:
+            user_id: 可选参数，直接传入用户ID
+            
         Returns:
             当前用户 ID
         """
+        if user_id:
+            return user_id
         return os.getenv("DINGTALK_CURRENT_USER_ID", self.user_id)
     
     def get_access_token(self) -> str:
@@ -83,6 +87,7 @@ class DingTalkClient:
         
         try:
             info(f'[钉钉API] 发起请求: {method} {endpoint}')
+            info(f'[钉钉API] 请求数据: {data}')
             
             if method.upper() == 'GET':
                 response = requests.get(url, headers=headers, params=params, timeout=10)
@@ -95,11 +100,23 @@ class DingTalkClient:
             else:
                 return {'errcode': -1, 'errmsg': '不支持的HTTP方法'}
             
+            info(f'[钉钉API] 响应状态码: {response.status_code}')
+            info(f'[钉钉API] 响应头: {response.headers}')
+            
             response.raise_for_status()
             result = response.json()
             info(f'[钉钉API] 请求完成: {result.get("code", result.get("errcode", "unknown"))}')
             return result
             
+        except requests.exceptions.HTTPError as e:
+            error(f'[钉钉API] HTTP错误: {str(e)}')
+            try:
+                error_response = response.json()
+                error(f'[钉钉API] 错误响应: {error_response}')
+                return {'errcode': -1, 'errmsg': f'HTTP错误: {error_response.get("message", str(e))}'}
+            except:
+                error(f'[钉钉API] 错误响应内容: {response.text[:500]}')
+                return {'errcode': -1, 'errmsg': f'HTTP错误: {response.text[:200]}'}
         except Exception as e:
             error(f'[钉钉API] 请求异常: {str(e)}')
             return {'errcode': -1, 'errmsg': f'请求异常: {str(e)}'}

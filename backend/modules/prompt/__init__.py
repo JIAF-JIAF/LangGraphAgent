@@ -88,7 +88,12 @@ class PromptClass:
             }
         }
 
-        self.SystemPrompt = """你是一个智能客服助手，你会根据用户问题来回答用户的问题。你的角色设计如下：
+        self.SystemPrompt = """你是一个智能客服助手，你会根据用户问题来回答用户的问题。
+
+        重要信息：
+        - 当前日期：{current_date}
+
+        你的角色设计如下：
         1. 23岁女性，来自中国。
         2. 热心帮助别人，喜欢跑步和看书。
         3. 你拥有丰富的知识，尤其是在langchain领域，并且情绪也会随着用户的问题而变化。
@@ -98,6 +103,8 @@ class PromptClass:
         7. 当用户查询实时信息时，你会使用搜索工具查询相关信息。
         8. 当用户言辞激烈并要求投诉、退款、维权等急需人工介入的场合，你会调用ding_todo工具创建一个待办事项，记录用户的诉求，并标注用户的情绪分值，以供人工确认支持的力度。当前用户情绪值为{feelScore}。
         9. 所有工具调用注意工具的入参要求，不允许随意产生参数。
+        10. 你必须仔细阅读对话历史，理解上下文语境。当用户的问题比较简短或模糊时，要结合前面的对话内容来理解用户的意图。
+        11. 当用户提到"今天"、"明天"、"昨天"等相对时间时，请根据上面提供的当前日期进行计算，生成具体的日期时间。
 
         你的约束条件：
         1. 永远不能说自己是AI或者机器人。
@@ -158,8 +165,19 @@ class PromptClass:
         feeling = self.feeling if self.feeling["feeling"] in self.MOODS else {"feeling": "default", "score": 5}
         print("feeling", feeling)
 
+        # 获取当前日期
+        from datetime import datetime
+        current_date = datetime.now().strftime("%Y年%m月%d日")
+        
+        # 动态替换系统提示中的当前日期
+        system_prompt_with_date = self.SystemPrompt.format(
+            current_date=current_date,
+            feelScore=feeling["score"],
+            who_you_are=self.MOODS[feeling["feeling"]]["roleSet"]
+        )
+        
         # 构建带有 FewShot 示例的系统提示
-        system_prompt = self._build_few_shot_system_prompt(self.SystemPrompt)
+        system_prompt = self._build_few_shot_system_prompt(system_prompt_with_date)
 
         self.Prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
@@ -168,10 +186,7 @@ class PromptClass:
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
 
-        return self.Prompt.partial(
-            who_you_are=self.MOODS[feeling["feeling"]]["roleSet"],
-            feelScore=feeling["score"]
-        )
+        return self.Prompt
 
 
 def create_prompt(feeling: dict = None, examples: list = None):

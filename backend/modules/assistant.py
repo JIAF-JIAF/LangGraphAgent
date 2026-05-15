@@ -108,8 +108,18 @@ class Agent:
         if uid:
             os.environ['DINGTALK_CURRENT_USER_ID'] = uid
 
+        # 动态注入当前日期时间作为上下文
+        from datetime import datetime
+        current_datetime = datetime.now()
+        current_date_str = current_datetime.strftime("%Y年%m月%d日")
+        current_time_str = current_datetime.strftime("%H:%M")
+        
+        # 在输入前添加时间提示，让模型知道当前时间
+        time_context = f"【当前时间：{current_date_str} {current_time_str}】"
+        enhanced_input = f"{time_context}\n\n{input}"
+
         result = self._agent_executor.invoke({
-            "input": input,
+            "input": enhanced_input,
             "chat_history": chat_history or []
         })
 

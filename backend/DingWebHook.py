@@ -19,7 +19,7 @@ from modules.assistant import Agent as LangChainAgent
 from modules.prompt import create_prompt
 from modules.feeling import FeelingDetector
 from mcp_module import MCPToolService
-from dingtalk_stream import ChatbotHandler, ChatbotMessage, Credential, DingTalkStreamClient
+from dingtalk_stream import ChatbotHandler, ChatbotMessage, Credential, DingTalkStreamClient, AckMessage
 
 # 确保输出编码正确
 if sys.stdout.encoding != 'utf-8':
@@ -134,11 +134,28 @@ class DingTalkChatbotHandler(ChatbotHandler):
     async def process(self, callback):
         """处理钉钉消息回调"""
         try:
+            # 打印完整的回调消息
+            print(f"\n===== 钉钉回调消息 =====", flush=True)
+            print(f"callback.data: {callback.data}", flush=True)
+            print(f"callback.data类型: {type(callback.data)}", flush=True)
+            import json
+            try:
+                print(f"callback.data(JSON): {json.dumps(callback.data, ensure_ascii=False, indent=2)}", flush=True)
+            except:
+                pass
+            print(f"========================\n", flush=True)
+            
             message = ChatbotMessage.from_dict(callback.data)
             
-            # 获取用户 ID
-            uid = message.sender_id
-            print(f"\n[钉钉消息] 用户ID: {uid}", flush=True)
+            # 打印 message 对象的所有属性
+            print(f"message对象属性: {dir(message)}", flush=True)
+            print(f"message.sender_id: {message.sender_id}", flush=True)
+            print(f"message.sender_staff_id: {getattr(message, 'sender_staff_id', 'N/A')}", flush=True)
+            print(f"message.sender_nick: {getattr(message, 'sender_nick', 'N/A')}", flush=True)
+            
+            # 获取用户 ID - 使用 senderStaffId
+            uid = getattr(message, 'sender_staff_id', message.sender_id)
+            print(f"\n[钉钉消息] 用户ID(senderStaffId): {uid}", flush=True)
 
             # 获取消息内容
             user_message = message.text.content
@@ -154,12 +171,16 @@ class DingTalkChatbotHandler(ChatbotHandler):
             print(f"[钉钉消息] 回复内容: {reply}", flush=True)
 
             # 发送回复
-            await self.reply_text(callback, reply)
+            self.reply_text(reply, message)
+            
+            # 返回成功状态
+            return AckMessage.STATUS_OK, 'OK'
 
         except Exception as e:
             print(f"[钉钉消息] 处理异常: {e}", flush=True)
             import traceback
             traceback.print_exc()
+            return AckMessage.STATUS_OK, 'OK'
 
 
 def main():

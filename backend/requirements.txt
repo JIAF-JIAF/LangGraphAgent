@@ -34,4 +34,4 @@ sentence-transformers>=2.2.0
 redis>=5.0.0
 
 # 钉钉 Stream API
-dingtalk-stream>=1.0.0
+dingtalk-stream>=0.24.3

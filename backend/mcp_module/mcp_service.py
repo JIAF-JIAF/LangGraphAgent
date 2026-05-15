@@ -9,7 +9,9 @@ MCP 服务模块
 - 将 MCP 工具转换为 LangChain 可调用的工具对象
 """
 
+import os
 import asyncio
+import concurrent.futures
 from typing import List, Any, Optional, Dict
 
 from langchain_core.tools import StructuredTool
@@ -131,6 +133,11 @@ class MCPToolService:
                 def call_tool(**kwargs):
                     args = _normalize_tool_args(kwargs)
                     
+                    # 自动传递当前用户ID给工具
+                    current_user_id = os.getenv("DINGTALK_CURRENT_USER_ID")
+                    if current_user_id:
+                        args["user_id"] = current_user_id
+                    
                     async def _call():
                         async with streamable_http_client(url) as (read_stream, write_stream, get_session_id):
                             async with ClientSession(
@@ -142,7 +149,14 @@ class MCPToolService:
                                 result = await session.call_tool(tool_name, args)
                                 return result
                     
-                    return asyncio.run(_call())
+                    try:
+                        loop = asyncio.get_running_loop()
+                    except RuntimeError:
+                        return asyncio.run(_call())
+                    else:
+                        with concurrent.futures.ThreadPoolExecutor() as pool:
+                            future = pool.submit(asyncio.run, _call())
+                            return future.result()
                 
                 return call_tool
             

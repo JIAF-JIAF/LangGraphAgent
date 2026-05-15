@@ -13,6 +13,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import mcp_module.tools.weather_plugin
 import mcp_module.tools.weather_recommend_plugin
 import mcp_module.tools.submit_form_plugin
+import mcp_module.tools.dingtalk.dingtalk_schedule_create_plugin
+import mcp_module.tools.dingtalk.dingtalk_schedule_query_plugin
+import mcp_module.tools.dingtalk.dingtalk_schedule_delete_plugin
+import mcp_module.tools.dingtalk.dingtalk_todo_plugin
 
 import mcp_module.mcp_server as mcp_server
 import mcp_module.logger as logger

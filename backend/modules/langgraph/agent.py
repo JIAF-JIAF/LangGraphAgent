@@ -257,7 +257,7 @@ class LangGraphAgent:
 
     def _update_chat_history(self, state: AgentState, query: str, answer: str) -> AgentState:
         """
-        统一更新对话历史
+        统一更新对话历史（带裁剪功能）
 
         Args:
             state: 当前状态
@@ -269,11 +269,20 @@ class LangGraphAgent:
         """
         if query and answer:
             self._log(f"[_update_chat_history] 自动更新对话历史")
+            chat_history = state.get("chat_history", [])
+            new_history = chat_history + [
+                HumanMessage(content=query),
+                AIMessage(content=answer)
+            ]
+            
+            # 裁剪对话历史，最多保留 10 轮对话（20 条消息）
+            max_history_messages = 20
+            if len(new_history) > max_history_messages:
+                new_history = new_history[-max_history_messages:]
+                self._log(f"[_update_chat_history] 对话历史已裁剪，当前长度: {len(new_history)}")
+            
             return {
-                "chat_history": state.get("chat_history", []) + [
-                    HumanMessage(content=query),
-                    AIMessage(content=answer)
-                ]
+                "chat_history": new_history
             }
         return state
 
