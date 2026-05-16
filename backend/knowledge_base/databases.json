@@ -1,0 +1,38 @@
+{
+  "default": {
+    "description": "默认知识库，包含公司介绍、产品信息、价格方案、售后服务等",
+    "documents": {
+      "raw_knowledge.txt": {
+        "chunk_count": 4,
+        "vector_count": 4,
+        "added_at": "2026-05-16T21:45:32.718643"
+      }
+    },
+    "created_at": "2026-05-16T21:45:32.718643",
+    "updated_at": "2026-05-16T21:45:32.718647"
+  },
+  "politics": {
+    "description": "政策文档知识库，包含党的各次全国代表大会文件、中央全会文件、重要政策文件",
+    "documents": {
+      "党的二十届四中全会.pdf": {
+        "chunk_count": 10,
+        "vector_count": 10,
+        "added_at": "2026-05-16T22:28:39.605345"
+      }
+    },
+    "created_at": "2026-05-16T21:45:32.718749",
+    "updated_at": "2026-05-16T22:28:39.605345"
+  },
+  "exams": {
+    "description": "考试相关知识合集",
+    "documents": {
+      "65条行测绝杀蒙题技巧.pdf": {
+        "chunk_count": 0,
+        "vector_count": 7,
+        "added_at": "2026-05-16T22:39:11.983359"
+      }
+    },
+    "created_at": "2026-05-16T22:39:01.859312",
+    "updated_at": "2026-05-16T22:39:13.562558"
+  }
+}

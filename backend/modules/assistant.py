@@ -15,6 +15,29 @@ LangChain Agent 模块
 import os
 from typing import Optional, Dict, Any, List
 from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain.chains import LLMChain
+from langchain.tools import BaseTool
+from pydantic import BaseModel, Field
+
+
+class DefaultToolInput(BaseModel):
+    """默认工具的输入参数"""
+    query: str = Field(description="用户查询")
+
+
+class DefaultTool(BaseTool):
+    """
+    默认空操作工具
+    
+    当没有实际工具时使用，确保 Agent 能正常工作。
+    此工具什么也不做，仅返回提示信息。
+    """
+    name: str = "default_tool"
+    description: str = "默认工具，用于保持 Agent 正常运行"
+    args_schema: type = DefaultToolInput
+
+    def _run(self, query: str) -> str:
+        return "已收到您的请求，我将直接为您回答。"
 
 
 class Agent:
@@ -52,7 +75,7 @@ class Agent:
 
     def _build_agent(self):
         """构建 Agent Executor"""
-        tools = self._tools.copy()
+        tools = self._tools.copy() if self._tools else [DefaultTool()]
 
         self._agent = create_tool_calling_agent(
             llm=self.llm_client.chat,
@@ -118,17 +141,28 @@ class Agent:
         time_context = f"【当前时间：{current_date_str} {current_time_str}】"
         enhanced_input = f"{time_context}\n\n{input}"
 
-        result = self._agent_executor.invoke({
-            "input": enhanced_input,
-            "chat_history": chat_history or []
-        })
+        if self._agent:
+            # 使用 AgentExecutor（有工具）
+            result = self._agent_executor.invoke({
+                "input": enhanced_input,
+                "chat_history": chat_history or []
+            })
+            answer = result.get("output", str(result))
+            intermediate_steps = result.get("intermediate_steps", [])
+        else:
+            # 使用 LLMChain（无工具）
+            result = self._agent_executor.invoke({
+                "input": enhanced_input
+            })
+            answer = result.get("text", str(result))
+            intermediate_steps = []
 
         if uid:
             os.environ.pop('DINGTALK_CURRENT_USER_ID', None)
 
         return {
-            "answer": result.get("output", str(result)),
-            "intermediate_steps": result.get("intermediate_steps", []),
+            "answer": answer,
+            "intermediate_steps": intermediate_steps,
             "tool_messages": [],
             "feeling": self._feeling
         }

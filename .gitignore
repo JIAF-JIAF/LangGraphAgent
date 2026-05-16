@@ -9,6 +9,10 @@ venv/
 .venv/
 ENV/
 
+# Poetry
+.poetry-cache/
+poetry.lock
+
 # 配置文件(包含敏感信息)
 .env
 backend/knowledge_base.json

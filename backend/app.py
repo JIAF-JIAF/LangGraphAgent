@@ -7,6 +7,7 @@ LangGraph 版本
 import uuid
 import sys
 import os
+import shutil
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -19,6 +20,7 @@ from modules.prompt import create_prompt
 from modules.feeling import FeelingDetector
 from modules.rate_limit import RateLimiter
 from mcp_module import MCPToolService
+from modules.rag.indexer import ChromaIndexer
 
 if sys.stdout.encoding != 'utf-8':
     import codecs
@@ -92,7 +94,6 @@ def init_system():
 
     print("\n[5/5] 初始化 LangGraph 调度层...")
     try:
-        # CHECKPOINT_STORAGE: "redis" 或 "memory"（默认）
         checkpoint_storage = os.getenv("CHECKPOINT_STORAGE", "memory").lower()
         print(f"  使用 {'Redis 持久化' if checkpoint_storage == 'redis' else '内存'}存储")
 

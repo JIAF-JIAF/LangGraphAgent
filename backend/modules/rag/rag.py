@@ -15,6 +15,7 @@ from modules.rag.retriever import SimpleVectorRetriever
 from modules.rag.generator import BaseGenerator
 from modules.rag.memory import ConversationMemory
 from modules.rag.router import LLMRouter
+from modules.knowledge_base import kb_manager
 
 
 class RAGWorkflow:
@@ -41,18 +42,16 @@ class RAGWorkflow:
         self._verbose = verbose
         self._log("初始化 RAG 业务模块...")
 
-        # 初始化索引器（支持多知识库）
+        # 动态初始化索引器（从知识库管理器获取所有知识库）
         self.indexers = {}
-        self.indexers["default"] = ChromaIndexer(
-            ai_client=llm_client,
-            config=self.config.get("indexer", {}),
-            collection_name="default"
-        )
-        self.indexers["politics"] = ChromaIndexer(
-            ai_client=llm_client,
-            config=self.config.get("indexer", {}),
-            collection_name="politics"
-        )
+        db_names = kb_manager.get_all_collection_names()
+        for db_name in db_names:
+            self.indexers[db_name] = ChromaIndexer(
+                ai_client=llm_client,
+                config=self.config.get("indexer", {}),
+                collection_name=db_name
+            )
+            self._log(f"已初始化知识库索引器: {db_name}")
 
         # 初始化检索器
         self.retriever = SimpleVectorRetriever(config=self.config.get("retriever", {}))

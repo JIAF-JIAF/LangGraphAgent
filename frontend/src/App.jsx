@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { useState } from 'react';
 import Header from './components/Header';
 import ChatArea from './components/ChatArea';
 import InputArea from './components/InputArea';
@@ -10,7 +9,7 @@ function App() {
   const [messages, setMessages] = useState([
     { type: 'bot', content: '您好！我是智能客服，有什么可以帮助您的吗？' }
   ]);
-  const [sessionId, setSessionId] = useState(uuidv4());
+  const [sessionId, setSessionId] = useState(Date.now().toString());
   const [loading, setLoading] = useState(false);
 
   const handleSend = async (message) => {
@@ -48,7 +47,7 @@ function App() {
 
     // 逐字添加
     for (let i = 0; i < fullText.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 30)); // 每个字30ms
+      await new Promise(resolve => setTimeout(resolve, 30));
       setMessages(prev => prev.map(msg => 
         msg.id === messageId 
           ? { ...msg, content: fullText.substring(0, i + 1) }

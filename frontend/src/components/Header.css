@@ -4,6 +4,7 @@
   color: white;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
@@ -21,4 +22,20 @@
 .customer-service-name {
   font-size: 20px;
   font-weight: 600;
+}
+
+.header-action {
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.header-action:hover {
+  background: rgba(255, 255, 255, 0.3);
 }

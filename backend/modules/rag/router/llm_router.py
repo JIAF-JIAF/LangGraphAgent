@@ -17,6 +17,7 @@ from typing import Optional, Dict, Any
 from langchain_core.messages import HumanMessage
 
 from .base import BaseRouter
+from modules.knowledge_base import kb_manager
 
 
 class LLMRouter(BaseRouter):
@@ -128,26 +129,30 @@ class LLMRouter(BaseRouter):
         Returns:
             完整的提示词字符串
         """
+        # 动态获取知识库列表
+        databases = kb_manager.get_databases()
+        kb_descriptions = []
+        for db in databases:
+            desc = db.get("description", "暂无描述")
+            kb_descriptions.append(f"- {db['name']}知识库：{desc}")
+        
+        kb_text = "\n".join(kb_descriptions) if kb_descriptions else "- default知识库：默认知识库"
+        
         return f"""
         你是一个智能路由器，负责判断用户问题是否需要从知识库中检索信息。
 
         用户问题：{query}
 
         知识库包含以下内容：
-        - default知识库：公司介绍、产品信息（智能办公系统、数据分析平台、CRM系统）、价格方案、售后服务、技术支持、常见问题、合作流程、优惠政策等
-        - politics知识库：党的各次全国代表大会文件、中央全会文件、重要政策文件（包括十一届三中全会、十二届三中全会、十三届四中全会、十四届三中全会、十五届四中全会、十六届四中全会、十七届四中全会、十八届四中全会、十九届四中全会、二十届四中全会等各次会议内容）
+        {kb_text}
 
         请根据以下标准判断：
         1. 需要检索的情况：
-        - 查询产品功能、价格或购买方式
-        - 咨询售后服务、技术支持或联系方式
-        - 询问合作流程、优惠政策
-        - 了解公司信息或产品相关问题
-        - 查询党的政策文件、会议精神、历史会议内容等
+        - 查询知识库中包含的特定领域知识、事实信息、文档内容等
         - 任何与上述知识库内容相关的问题
 
         2. 不需要检索的情况：
-        - 常识性问题（如"地球是圆的吗？"）
+        - 常识性问题
         - 创造性写作任务（如写文章、诗歌、故事）
         - 数学计算或逻辑推理
         - 闲聊对话或日常问候
@@ -179,14 +184,22 @@ class LLMRouter(BaseRouter):
         Returns:
             完整的提示词字符串
         """
+        # 动态获取知识库列表
+        databases = kb_manager.get_databases()
+        kb_descriptions = []
+        for db in databases:
+            desc = db.get("description", "暂无描述")
+            kb_descriptions.append(f"- {db['name']}: {desc}")
+        
+        kb_text = "\n".join(kb_descriptions) if kb_descriptions else "- default: 默认知识库"
+        
         return f"""
         你是一个知识库选择器，请根据用户问题选择最合适的知识库。
 
         用户问题：{query}
 
         可用知识库列表：
-        - default: 默认知识库，包含公司介绍、产品信息（智能办公系统、数据分析平台、CRM系统）、价格方案、售后服务、技术支持、常见问题、合作流程、优惠政策等
-        - politics: 政策文档知识库，包含党的各次全国代表大会文件、中央全会文件、重要政策文件（包括十一届三中全会、十二届三中全会、十三届四中全会、十四届三中全会、十五届四中全会、十六届四中全会、十七届四中全会、十八届四中全会、十九届四中全会、二十届四中全会等各次会议内容）
+        {kb_text}
 
         请分析问题领域，选择最合适的知识库名称。如果没有特别合适的，选择 default。
 
