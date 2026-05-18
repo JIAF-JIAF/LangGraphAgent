@@ -21,7 +21,7 @@ class MCPConfigApi {
    */
   async getServers() {
     try {
-      const response = await this.client.get('/api/mcp/servers');
+      const response = await this.client.get('/mcp/servers');
       return response.data;
     } catch (error) {
       console.error('获取 MCP 服务器列表失败:', error);
@@ -36,7 +36,7 @@ class MCPConfigApi {
    */
   async getServer(serverId) {
     try {
-      const response = await this.client.get(`/api/mcp/servers/${serverId}`);
+      const response = await this.client.get(`/mcp/servers/${serverId}`);
       return response.data;
     } catch (error) {
       console.error(`获取服务器 ${serverId} 失败:', error`);
@@ -55,7 +55,7 @@ class MCPConfigApi {
    */
   async addServer(serverData) {
     try {
-      const response = await this.client.post('/api/mcp/servers', serverData);
+      const response = await this.client.post('/mcp/servers', serverData);
       return response.data;
     } catch (error) {
       console.error('添加 MCP 服务器失败:', error);
@@ -71,7 +71,7 @@ class MCPConfigApi {
    */
   async updateServer(serverId, updates) {
     try {
-      const response = await this.client.put(`/api/mcp/servers/${serverId}`, updates);
+      const response = await this.client.put(`/mcp/servers/${serverId}`, updates);
       return response.data;
     } catch (error) {
       console.error(`更新服务器 ${serverId} 失败:', error`);
@@ -86,7 +86,7 @@ class MCPConfigApi {
    */
   async deleteServer(serverId) {
     try {
-      const response = await this.client.delete(`/api/mcp/servers/${serverId}`);
+      const response = await this.client.delete(`/mcp/servers/${serverId}`);
       return response.data;
     } catch (error) {
       console.error(`删除服务器 ${serverId} 失败:', error`);
@@ -101,7 +101,7 @@ class MCPConfigApi {
    */
   async testConnection(serverId) {
     try {
-      const response = await this.client.post(`/api/mcp/servers/${serverId}/test`);
+      const response = await this.client.post(`/mcp/servers/${serverId}/test`);
       return response.data;
     } catch (error) {
       console.error(`测试服务器 ${serverId} 连接失败:', error`);
@@ -115,7 +115,7 @@ class MCPConfigApi {
    */
   async getDefaultServer() {
     try {
-      const response = await this.client.get('/api/mcp/servers/default');
+      const response = await this.client.get('/mcp/servers/default');
       return response.data;
     } catch (error) {
       console.error('获取默认服务器失败:', error);

@@ -13,8 +13,9 @@ export default defineConfig({
     open: '/db.html',
     proxy: {
       '/api': {
-        target: 'http://localhost:18000',
-        changeOrigin: true
+        target: 'http://localhost:15001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
       }
     }
   },

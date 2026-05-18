@@ -2,7 +2,7 @@ import axios from 'axios';
 
 /**
  * Skill 配置 API 客户端
- * 提供 Skill 文件的上传、删除和列表查询操作
+ * 提供 Skill 的安装、卸载和列表查询操作
  */
 class SkillConfigApi {
   constructor() {
@@ -16,12 +16,12 @@ class SkillConfigApi {
   }
 
   /**
-   * 获取所有 Skill 列表
+   * 获取所有已安装的 Skill 列表
    * @returns {Promise<Object>} Skill 列表
    */
   async getSkills() {
     try {
-      const response = await this.client.get('/api/skills');
+      const response = await this.client.get('/skills/');
       return response.data;
     } catch (error) {
       console.error('获取 Skill 列表失败:', error);
@@ -30,53 +30,46 @@ class SkillConfigApi {
   }
 
   /**
-   * 获取单个 Skill
+   * 获取单个 Skill 详情
    * @param {string} skillName - Skill 名称
    * @returns {Promise<Object>} Skill 详情
    */
   async getSkill(skillName) {
     try {
-      const response = await this.client.get(`/api/skills/${skillName}`);
+      const response = await this.client.get(`/skills/${skillName}`);
       return response.data;
     } catch (error) {
-      console.error(`获取 Skill ${skillName} 失败:', error`);
+      console.error(`获取 Skill ${skillName} 失败:`, error);
       throw error;
     }
   }
 
   /**
-   * 上传 Skill 文件
-   * @param {File} file - Skill 文件 (.skill.md)
-   * @returns {Promise<Object>} 上传结果
+   * 从 GitHub URL 安装 Skill
+   * @param {string} url - GitHub 仓库 URL
+   * @returns {Promise<Object>} 安装结果
    */
-  async uploadSkill(file) {
+  async installFromUrl(url) {
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await this.client.post('/api/skills/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      const response = await this.client.post('/skills/install', { url });
       return response.data;
     } catch (error) {
-      console.error('上传 Skill 失败:', error);
+      console.error('安装 Skill 失败:', error);
       throw error;
     }
   }
 
   /**
-   * 删除 Skill
+   * 卸载 Skill
    * @param {string} skillName - Skill 名称
-   * @returns {Promise<Object>} 删除结果
+   * @returns {Promise<Object>} 卸载结果
    */
-  async deleteSkill(skillName) {
+  async uninstall(skillName) {
     try {
-      const response = await this.client.delete(`/api/skills/${skillName}`);
+      const response = await this.client.delete(`/skills/${skillName}`);
       return response.data;
     } catch (error) {
-      console.error(`删除 Skill ${skillName} 失败:', error`);
+      console.error(`卸载 Skill ${skillName} 失败:`, error);
       throw error;
     }
   }
@@ -87,7 +80,7 @@ class SkillConfigApi {
    */
   async reloadSkills() {
     try {
-      const response = await this.client.post('/api/skills/reload');
+      const response = await this.client.post('/skills/reload');
       return response.data;
     } catch (error) {
       console.error('重新加载 Skill 失败:', error);
@@ -96,7 +89,5 @@ class SkillConfigApi {
   }
 }
 
-// 创建单例实例
 const skillConfigApi = new SkillConfigApi();
-
 export default skillConfigApi;

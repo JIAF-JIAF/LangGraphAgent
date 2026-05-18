@@ -25,7 +25,8 @@ function AgentConfig() {
 
   // Skill 配置状态
   const [skills, setSkills] = useState([]);
-  const [skillUploading, setSkillUploading] = useState(false);
+  const [skillUrl, setSkillUrl] = useState('');
+  const [skillInstalling, setSkillInstalling] = useState(false);
 
   const allowedExtensions = ['.txt', '.pdf', '.md', '.csv', '.docx'];
   const allowedSkillExtensions = ['.skill.md'];
@@ -316,39 +317,26 @@ function AgentConfig() {
     }
   };
 
-  const handleSkillDrop = (e) => {
-    e.preventDefault();
-    handleSkillFiles(e.dataTransfer.files);
-  };
-
-  const handleSkillSelect = (e) => {
-    handleSkillFiles(e.target.files);
-  };
-
-  const handleSkillFiles = async (files) => {
-    const validFiles = Array.from(files).filter(file => {
-      const name = file.name.toLowerCase();
-      return name.endsWith('.skill.md');
-    });
-    if (validFiles.length === 0) {
-      showMessage('请上传 .skill.md 文件', 'error');
+  const handleInstallSkill = async () => {
+    if (!skillUrl.trim()) {
+      showMessage('请输入 Skill Git 地址', 'warning');
       return;
     }
-    setSkillUploading(true);
+    setSkillInstalling(true);
     try {
-      let successCount = 0;
-      for (const file of validFiles) {
-        const response = await skillConfigApi.uploadSkill(file);
-        if (response.status === 'success') {
-          successCount++;
-        }
+      const response = await skillConfigApi.installFromUrl(skillUrl.trim());
+      if (response.status === 'success') {
+        showMessage('Skill 安装成功', 'success');
+        setSkillUrl('');
+        await loadSkills();
+      } else {
+        showMessage(response.message || '安装失败', 'error');
       }
-      await loadSkills();
-      showMessage(`成功上传 ${successCount} 个 Skill 文件`, 'success');
     } catch (error) {
-      showMessage('上传 Skill 文件失败', 'error');
+      console.error('安装 Skill 失败:', error);
+      showMessage('安装 Skill 失败', 'error');
     } finally {
-      setSkillUploading(false);
+      setSkillInstalling(false);
     }
   };
 
@@ -636,29 +624,30 @@ function AgentConfig() {
               <div className="skill-content">
                 <div className="section-card">
                   <div className="section-header">
-                    <h3>上传 Skill</h3>
+                    <h3>安装 Skill</h3>
                   </div>
-                  <div className="skill-upload-area" onDrop={handleSkillDrop} onDragOver={(e) => e.preventDefault()}>
+                  <div className="skill-install-form">
                     <input
-                      type="file"
-                      multiple
-                      accept=".skill.md"
-                      onChange={handleSkillSelect}
-                      className="hidden-file-input"
-                      disabled={skillUploading}
+                      type="text"
+                      value={skillUrl}
+                      onChange={(e) => setSkillUrl(e.target.value)}
+                      placeholder="输入 Skill Git 地址"
+                      disabled={skillInstalling}
                     />
-                    {skillUploading ? (
-                      <div className="uploading-state">
-                        <div className="spinner"></div>
-                        <span>上传中...</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="skill-icon">⚡</div>
-                        <p>拖拽 .skill.md 文件到此处，或 <span className="click-link" onClick={() => document.querySelector('.hidden-file-input')?.click()}>点击选择</span></p>
-                        <p className="upload-hint">支持多文件上传</p>
-                      </>
-                    )}
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleInstallSkill}
+                      disabled={skillInstalling}
+                    >
+                      {skillInstalling ? (
+                        <>
+                          <div className="spinner-small"></div>
+                          <span>安装中...</span>
+                        </>
+                      ) : (
+                        '安装'
+                      )}
+                    </button>
                   </div>
                 </div>
 
@@ -670,7 +659,7 @@ function AgentConfig() {
                     <div className="empty-state">
                       <span className="empty-icon">⚡</span>
                       <p>暂无 Skill</p>
-                      <p className="empty-hint">上传 .skill.md 文件添加技能</p>
+                      <p className="empty-hint">输入 Git 地址安装技能</p>
                     </div>
                   ) : (
                     <div className="skill-list">

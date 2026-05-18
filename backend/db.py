@@ -18,7 +18,7 @@ from modules.rag.indexer import ChromaIndexer
 from modules.document_loaders import DocumentLoaderFactory
 from knowledge_base import kb_manager
 from api.mcp_config_api import mcp_config_bp
-from api.skill_config_api import skill_config_bp
+from api.skill_install_api import skill_install_bp
 
 load_dotenv()
 
@@ -32,7 +32,7 @@ CORS(app)
 app.register_blueprint(mcp_config_bp)
 
 # 注册 Skill 配置 API 蓝图
-app.register_blueprint(skill_config_bp)
+app.register_blueprint(skill_install_bp)
 
 # 全局变量
 ai_client = None
@@ -69,7 +69,7 @@ def get_database_stats(db_name):
         print(f"获取数据库统计失败: {e}")
         return {"vector_count": 0}
 
-@app.route('/api/databases', methods=['GET'])
+@app.route('/databases', methods=['GET'])
 def get_databases():
     """获取所有数据库列表"""
     try:
@@ -95,7 +95,7 @@ def get_databases():
         print(f"获取数据库列表失败: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/databases', methods=['POST'])
+@app.route('/databases', methods=['POST'])
 def create_database():
     """新建数据库"""
     try:
@@ -129,7 +129,7 @@ def create_database():
         print(f"创建数据库失败: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/databases/<db_name>', methods=['GET'])
+@app.route('/databases/<db_name>', methods=['GET'])
 def get_database(db_name):
     """获取单个数据库详情"""
     try:
@@ -155,7 +155,7 @@ def get_database(db_name):
         print(f"获取数据库详情失败: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/databases/<db_name>', methods=['PUT'])
+@app.route('/databases/<db_name>', methods=['PUT'])
 def update_database(db_name):
     """更新数据库信息"""
     try:
@@ -174,7 +174,7 @@ def update_database(db_name):
         print(f"更新数据库失败: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/databases/<db_name>', methods=['DELETE'])
+@app.route('/databases/<db_name>', methods=['DELETE'])
 def delete_database(db_name):
     """删除数据库"""
     try:
@@ -197,7 +197,7 @@ def delete_database(db_name):
         print(f"删除数据库失败: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/databases/<db_name>/upload', methods=['POST'])
+@app.route('/databases/<db_name>/upload', methods=['POST'])
 def upload_files(db_name):
     """上传文件到数据库"""
     try:
@@ -261,7 +261,7 @@ def upload_files(db_name):
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/databases/<db_name>/documents', methods=['GET'])
+@app.route('/databases/<db_name>/documents', methods=['GET'])
 def get_documents(db_name):
     """获取数据库中的文档列表"""
     try:
@@ -280,7 +280,7 @@ def get_documents(db_name):
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/databases/<db_name>/documents/<doc_name>', methods=['DELETE'])
+@app.route('/databases/<db_name>/documents/<doc_name>', methods=['DELETE'])
 def delete_document(db_name, doc_name):
     """删除数据库中的单个文档"""
     try:
