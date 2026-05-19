@@ -3,8 +3,8 @@ LangGraph Agent 实现
 
 标准 LangGraph RAG 流程，增强版包含任务规划、反思校验和技能匹配：
 
-START → feeling_detect → skill_match → ┌── 匹配到技能 ──→ plan(使用技能) → execute_task → ...
-                                       │                                    │
+START → feeling_detect → skill_match → ┌── 匹配到技能 ──→ skill_runner → END
+                                       │
                                        └── 未匹配技能 ──→ router → ┌── 需要检索 ──→ retrieve → generate → plan
                                                                │                                        │
                                                                └── 不需要检索 ──→ plan ←─────────────────┘
@@ -20,7 +20,7 @@ START → feeling_detect → skill_match → ┌── 匹配到技能 ──→
 - 在 call_model 节点中更新对话历史
 - 支持感情侦测，动态更新 prompt
 - 支持任务规划和反思校验
-- 支持技能匹配：根据用户查询匹配专业技能
+- 支持技能匹配：命中 skill 后统一走 skill_runner 执行
 """
 
 import time
@@ -147,6 +147,55 @@ class LangGraphAgent:
             self._log(f"[节点: skill_match] 未匹配到技能，使用默认流程")
         
         return {"matched_skill": matched_skill}
+
+    def _skill_runner_node(self, state: AgentState) -> AgentState:
+        """
+        技能执行节点：使用 skill_runner 执行命中的技能
+
+        Args:
+            state: 当前状态（包含 query, matched_skill）
+
+        Returns:
+            更新后的状态（包含执行结果）
+        """
+        query = state["query"]
+        matched_skill = state.get("matched_skill")
+
+        if not matched_skill:
+            self._log(f"[节点: skill_runner] 未匹配到技能，跳过")
+            return {"answer": "", "skill_executed": False}
+
+        skill_name = matched_skill.get("name", "")
+        self._log(f"[节点: skill_runner] 开始执行技能: {skill_name}")
+
+        try:
+            result = self._skill_manager.execute_skill(skill_name=skill_name, query=query)
+
+            self._log(f"[节点: skill_runner] 执行完成: success={result.success}, output_len={len(result.final_output)}")
+
+            return {
+                "answer": result.final_output or result.error,
+                "skill_executed": True,
+                "skill_name": skill_name,
+                "skill_success": result.success,
+                "skill_steps": [
+                    {
+                        "number": s.step_number,
+                        "name": s.step_name,
+                        "status": s.status.value,
+                        "output": s.output,
+                        "duration": s.duration
+                    }
+                    for s in result.steps
+                ]
+            }
+        except Exception as e:
+            self._log(f"[节点: skill_runner] 执行失败: {e}", "ERROR")
+            return {
+                "answer": f"技能执行失败: {str(e)}",
+                "skill_executed": False,
+                "skill_success": False
+            }
 
     def _router_node(self, state: AgentState) -> AgentState:
         """
@@ -380,7 +429,7 @@ class LangGraphAgent:
             "is_reflection_passed": False
         }
 
-    def _should_use_skill(self, state: AgentState) -> Literal["plan", "router"]:
+    def _should_use_skill(self, state: AgentState) -> Literal["skill_runner", "router"]:
         """
         条件路由：判断是否使用匹配到的技能
 
@@ -388,12 +437,12 @@ class LangGraphAgent:
             state: 当前状态（包含 matched_skill）
 
         Returns:
-            "plan" 或 "router"，决定下一步流向
+            "skill_runner" 或 "router"，决定下一步流向
         """
         matched_skill = state.get("matched_skill")
         if matched_skill:
-            decision = "plan"
-            self._log(f"[条件路由] 匹配到技能，直接进入任务规划")
+            decision = "skill_runner"
+            self._log(f"[条件路由] 匹配到技能，进入技能执行")
         else:
             decision = "router"
             self._log(f"[条件路由] 未匹配到技能，进入检索路由")
@@ -556,16 +605,16 @@ class LangGraphAgent:
         构建增强版状态图
 
         状态图结构：
-        START -> feeling_detect -> skill_match -> ┌── 匹配到技能 ──→ plan(使用技能) → execute_task → ...
-                                                 │                                    │
-                                                 └── 未匹配技能 ──→ router → ┌── 需要检索 ──→ retrieve → generate → plan
+        START -> feeling_detect -> skill_match -> ┌── 匹配到技能 ──→ skill_runner -> END
+                                                 │
+                                                 └── 未匹配技能 ──→ router -> ┌── 需要检索 ──→ retrieve -> generate -> plan
                                                                          │                                        │
-                                                                         └── 不需要检索 ──→ plan ←─────────────────┘
-                                                                                              │
+                                                                         └── 不需要检索 ──→ plan <----------------─┘
+                                                                                              |
                                                                                               ▼
-                                                                                   execute_task → check_task_complete → ┌── 有更多任务 ──→ execute_task
+                                                                                   execute_task -> check_task_complete -> ┌── 有更多任务 ──→ execute_task
                                                                                                                  │
-                                                                                                                 └── 所有任务完成 ──→ call_model → END
+                                                                                                                 └── 所有任务完成 ──→ call_model -> END
         """
         self._log("开始构建增强版 LangGraph 状态图...")
         
@@ -574,6 +623,7 @@ class LangGraphAgent:
         # 添加节点
         self._graph.add_node("feeling_detect", self._feeling_detect_node)
         self._graph.add_node("skill_match", self._skill_match_node)
+        self._graph.add_node("skill_runner", self._skill_runner_node)
         self._graph.add_node("router", self._router_node)
         self._graph.add_node("retrieve", self._retrieve_node)
         self._graph.add_node("generate", self._generate_node)
@@ -587,12 +637,15 @@ class LangGraphAgent:
         self._graph.add_edge(START, "feeling_detect")
         self._graph.add_edge("feeling_detect", "skill_match")
 
-        # 技能匹配分支：匹配到技能直接规划，否则进入检索路由
+        # 技能匹配分支：匹配到技能走 skill_runner，否则进入检索路由
         self._graph.add_conditional_edges(
             "skill_match",
             self._should_use_skill,
-            {"plan": "plan", "router": "router"}
+            {"skill_runner": "skill_runner", "router": "router"}
         )
+
+        # 技能执行完成后直接结束
+        self._graph.add_edge("skill_runner", END)
 
         # 路由分支：检索或直接规划
         self._graph.add_conditional_edges(
@@ -649,6 +702,11 @@ class LangGraphAgent:
             "answer": "",
             "feeling": {"feeling": "default", "score": 5},
             "uid": uid,
+            "matched_skill": None,
+            "skill_executed": False,
+            "skill_name": "",
+            "skill_success": False,
+            "skill_steps": [],
             "subtasks": [],
             "current_task_idx": 0,
             "is_task_completed": False,
@@ -671,7 +729,11 @@ class LangGraphAgent:
             "answer": result["answer"],
             "feeling": result["feeling"],
             "reflection_confidence": result["reflection_confidence"],
-            "retry_count": result["retry_count"]
+            "retry_count": result["retry_count"],
+            "skill_executed": result.get("skill_executed", False),
+            "skill_name": result.get("skill_name", ""),
+            "skill_success": result.get("skill_success", False),
+            "skill_steps": result.get("skill_steps", [])
         }
 
     def get_graph(self):

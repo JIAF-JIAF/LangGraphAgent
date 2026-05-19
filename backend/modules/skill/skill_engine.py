@@ -1,6 +1,6 @@
 """
 Skill 引擎
-简化版 - 只支持目录格式
+支持目录格式的技能加载和语义匹配
 """
 
 import os
@@ -8,6 +8,7 @@ import re
 import glob
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
+import numpy as np
 
 
 class SkillEngine:
@@ -17,9 +18,10 @@ class SkillEngine:
     支持目录格式: skill_name/SKILL.md
     支持 frontmatter 解析
     支持 references 按需加载
+    支持基于描述的语义匹配
     """
 
-    def __init__(self, skills_dir: str = None):
+    def __init__(self, skills_dir: str = None, embedding_client: Any = None):
         if skills_dir is None:
             backend_dir = Path(__file__).parent.parent.parent
             skills_dir = backend_dir / "skills"
@@ -29,7 +31,10 @@ class SkillEngine:
         self.skills_dir = skills_dir
         self.skills_dir.mkdir(parents=True, exist_ok=True)
         self._registry: Dict[str, Dict[str, Any]] = {}
+        self._embedding_client = embedding_client
+        self._skill_embeddings: Dict[str, List[float]] = {}  # 缓存技能描述向量
         self._load_all()
+        self._precompute_embeddings()
 
     def _load_all(self):
         """加载所有 Skill"""
@@ -208,9 +213,80 @@ class SkillEngine:
             print(f"[SkillEngine] 解析 frontmatter 失败: {e}")
             return {}
 
-    def match(self, query: str) -> Optional[Dict[str, Any]]:
+    def _precompute_embeddings(self):
+        """预计算所有技能描述的嵌入向量"""
+        if not self._embedding_client:
+            print("[SkillEngine] 未设置嵌入客户端，跳过预计算")
+            return
+
+        self._skill_embeddings.clear()
+        for skill_name, skill in self._registry.items():
+            description = skill.get("description", "")
+            if description:
+                try:
+                    print(f"[SkillEngine] 预计算向量: {skill_name}")
+                    embedding = self._embedding_client.embed_query(description)
+                    self._skill_embeddings[skill_name] = embedding
+                    print(f"[SkillEngine] 预计算成功: {skill_name}, 向量维度: {len(embedding)}")
+                except Exception as e:
+                    print(f"[SkillEngine] 预计算向量失败 {skill_name}: {e}")
+            else:
+                print(f"[SkillEngine] {skill_name} 没有描述，跳过")
+        
+        print(f"[SkillEngine] 预计算完成，共 {len(self._skill_embeddings)} 个技能向量")
+
+    def match(self, query: str, threshold: float = 0.5) -> Optional[Dict[str, Any]]:
         """
         根据查询匹配最合适的 Skill
+
+        优先使用语义匹配（基于描述），如果没有嵌入客户端则回退到关键词匹配
+
+        Args:
+            query: 用户查询
+            threshold: 语义匹配阈值（0-1），低于此阈值不匹配
+
+        Returns:
+            匹配到的 Skill 定义，未匹配返回 None
+        """
+        # 如果有嵌入客户端，使用语义匹配
+        if self._embedding_client and self._skill_embeddings:
+            try:
+                query_embedding = self._embedding_client.embed_query(query)
+                if not query_embedding:
+                    return self._match_by_keywords(query)
+
+                # 计算与每个技能的相似度
+                similarities = []
+                query_vec = np.array(query_embedding)
+                print(f"[SkillEngine] 查询: '{query}'")
+                for skill_name, skill in self._registry.items():
+                    skill_embedding = self._skill_embeddings.get(skill_name)
+                    if skill_embedding:
+                        skill_vec = np.array(skill_embedding)
+                        similarity = float(np.dot(query_vec, skill_vec) / 
+                                         (np.linalg.norm(query_vec) * np.linalg.norm(skill_vec)))
+                        print(f"[SkillEngine] 与 {skill_name} 的相似度: {similarity:.4f}")
+                        if similarity >= threshold:
+                            similarities.append((skill, similarity))
+
+                if similarities:
+                    similarities.sort(key=lambda x: x[1], reverse=True)
+                    matched_skill = similarities[0][0]
+                    print(f"[SkillEngine] 匹配到技能: {matched_skill['name']} (相似度: {similarities[0][1]:.4f})")
+                    return matched_skill
+                else:
+                    print(f"[SkillEngine] 语义匹配未找到合适技能（阈值: {threshold}），尝试关键词匹配")
+                    return self._match_by_keywords(query)
+            except Exception as e:
+                print(f"[SkillEngine] 语义匹配失败: {e}，回退到关键词匹配")
+                return self._match_by_keywords(query)
+
+        # 没有嵌入客户端，使用关键词匹配
+        return self._match_by_keywords(query)
+
+    def _match_by_keywords(self, query: str) -> Optional[Dict[str, Any]]:
+        """
+        基于关键词的匹配（回退方案）
 
         Args:
             query: 用户查询
@@ -223,7 +299,9 @@ class SkillEngine:
         for skill_name, skill in self._registry.items():
             keywords = skill.get("trigger_keywords", [])
             if any(keyword in query for keyword in keywords):
-                matched_skills.append((skill, len([k for k in keywords if k in query])))
+                match_count = len([k for k in keywords if k in query])
+                matched_skills.append((skill, match_count))
+                print(f"[SkillEngine] 关键词匹配: {skill_name} - 匹配数: {match_count}")
 
         if not matched_skills:
             return None
@@ -311,11 +389,18 @@ class SkillEngine:
 _engine_instance: Optional[SkillEngine] = None
 
 
-def get_engine() -> SkillEngine:
-    """获取全局引擎实例"""
+def get_engine(embedding_client: Any = None) -> SkillEngine:
+    """获取全局引擎实例
+    
+    Args:
+        embedding_client: 嵌入向量客户端，用于语义匹配（可选）
+    
+    Returns:
+        SkillEngine 实例
+    """
     global _engine_instance
     if _engine_instance is None:
-        _engine_instance = SkillEngine()
+        _engine_instance = SkillEngine(embedding_client=embedding_client)
     return _engine_instance
 
 

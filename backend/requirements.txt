@@ -35,3 +35,7 @@ redis>=5.0.0
 
 # 钉钉 Stream API
 dingtalk-stream>=0.24.3
+
+# Agent Skills 支持 (pydantic-ai-skills)
+pydantic-ai-skills>=0.10.0
+pyyaml>=6.0

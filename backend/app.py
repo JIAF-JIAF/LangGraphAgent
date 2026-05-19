@@ -20,7 +20,7 @@ from modules.assistant import Agent as LangChainAgent
 from modules.prompt import create_prompt
 from modules.feeling import FeelingDetector
 from modules.rate_limit import RateLimiter
-from modules.skill import get_engine, SkillManagerAdapter
+from modules.skill import SkillManager
 from mcp_module import MCPToolService
 from modules.rag.indexer import ChromaIndexer
 
@@ -107,9 +107,8 @@ def init_system():
         reflection_checker = ReflectionChecker(llm_client=ai_client)
         print("  反思校验器初始化完成")
 
-        skill_engine = get_engine()
-        skill_manager = SkillManagerAdapter(skill_engine)
-        print(f"  技能管理器初始化完成 (加载 {len(skill_engine.list())} 个技能)")
+        skill_manager = SkillManager(llm_client=ai_client)
+        print(f"  技能管理器初始化完成 (加载 {len(skill_manager.list())} 个技能)")
 
         assistant_instance = LangGraphAgent(
             agent=langchain_agent,

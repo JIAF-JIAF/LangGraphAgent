@@ -19,6 +19,7 @@ from modules.checkpoint import CheckpointFactory
 from modules.assistant import Agent as LangChainAgent
 from modules.prompt import create_prompt
 from modules.feeling import FeelingDetector
+from modules.skill import SkillManager
 from mcp_module import MCPToolService
 from dingtalk_stream import ChatbotHandler, ChatbotMessage, Credential, DingTalkStreamClient, AckMessage
 
@@ -110,13 +111,17 @@ def init_system():
         reflection_checker = ReflectionChecker(llm_client=ai_client)
         print("  反思校验器初始化完成")
 
+        skill_manager = SkillManager(llm_client=ai_client)
+        print(f"  技能管理器初始化完成 (加载 {len(skill_manager.list())} 个技能)")
+
         assistant_instance = LangGraphAgent(
             agent=langchain_agent,
             rag_workflow=rag_workflow,
             checkpointer=checkpointer,
             feeling_detector=feeling_detector,
             task_planner=task_planner,
-            reflection_checker=reflection_checker
+            reflection_checker=reflection_checker,
+            skill_manager=skill_manager
         )
         print("LangGraph 调度层初始化完成")
     except Exception as e:

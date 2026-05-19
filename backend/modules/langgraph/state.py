@@ -28,6 +28,10 @@ class AgentState(TypedDict):
     
     # ========== 技能匹配字段 ==========
     matched_skill: Optional[Dict[str, Any]]  # 匹配到的技能定义
+    skill_executed: bool  # 技能是否已执行
+    skill_name: str  # 执行的技能名称
+    skill_success: bool  # 技能执行是否成功
+    skill_steps: List[Dict[str, Any]]  # 技能执行步骤结果
     
     # ========== 任务规划字段 ==========
     subtasks: List[Dict[str, Any]]  # 子任务队列
