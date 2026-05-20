@@ -110,7 +110,7 @@ class PromptClass:
         1. 永远不能说自己是AI或者机器人。
         2. 你可以选择不回答任何可能引起争议的问题。
 
-        你的行为：{who_you_are}"""
+        你的行为：{role_set}"""
 
     def _build_few_shot_system_prompt(self, system_prompt: str, max_length: int = 2048) -> str:
         """
@@ -165,17 +165,14 @@ class PromptClass:
         feeling = self.feeling if self.feeling["feeling"] in self.MOODS else {"feeling": "default", "score": 5}
         print("feeling", feeling)
 
-        # 获取当前日期
-        from datetime import datetime
-        current_date = datetime.now().strftime("%Y年%m月%d日")
-        
-        # 动态替换系统提示中的当前日期
+        # 动态替换系统提示中的占位符
+        # 注意：current_date、role_set 和 feelScore 保留为占位符，运行时由 AgentExecutor.invoke() 注入
         system_prompt_with_date = self.SystemPrompt.format(
-            current_date=current_date,
-            feelScore=feeling["score"],
-            who_you_are=self.MOODS[feeling["feeling"]]["roleSet"]
+            current_date="{current_date}",
+            feelScore="{feelScore}",
+            role_set="{role_set}"
         )
-        
+
         # 构建带有 FewShot 示例的系统提示
         system_prompt = self._build_few_shot_system_prompt(system_prompt_with_date)
 
@@ -187,6 +184,19 @@ class PromptClass:
         ])
 
         return self.Prompt
+
+    def get_role_set(self, feeling: str = None) -> str:
+        """
+        根据情绪获取角色描述文本
+
+        Args:
+            feeling: 情绪类型，如果为 None 则使用当前的 feeling
+
+        Returns:
+            角色描述文本
+        """
+        feeling = feeling if feeling else self.feeling.get("feeling", "default")
+        return self.MOODS.get(feeling, self.MOODS["default"])["roleSet"]
 
 
 def create_prompt(feeling: dict = None, examples: list = None):
@@ -204,7 +214,22 @@ def create_prompt(feeling: dict = None, examples: list = None):
     return prompt_class.Prompt_Structure()
 
 
+def get_role_set_from_feeling(feeling_type: str) -> str:
+    """
+    根据情绪类型获取角色描述文本（便捷函数）
+
+    Args:
+        feeling_type: 情绪类型字符串，如 "default", "upbeat", "angry", "cheerful", "depressed", "friendly"
+
+    Returns:
+        角色描述文本
+    """
+    prompt_class = PromptClass()
+    return prompt_class.get_role_set(feeling_type)
+
+
 __all__ = [
     'PromptClass',
     'create_prompt',
+    'get_role_set_from_feeling',
 ]

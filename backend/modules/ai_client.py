@@ -39,6 +39,9 @@ class LLMClient:
         self.api_key = os.getenv("API_KEY")
         self.base_url = os.getenv("BASE_URL")
         self.model = os.getenv("MODEL")
+        self.request_timeout = int(os.getenv("LLM_REQUEST_TIMEOUT", "300"))
+        self.max_retries = int(os.getenv("LLM_MAX_RETRIES", "2"))
+        # self.embedding_timeout = int(os.getenv("EMBEDDING_TIMEOUT", "300"))
 
     def _init_clients(self):
         """初始化 LangChain ChatOpenAI 客户端。"""
@@ -47,6 +50,8 @@ class LLMClient:
             api_key=self.api_key,
             base_url=self.base_url,
             temperature=self.temperature,
+            # request_timeout=self.request_timeout,
+            max_retries=self.max_retries,
         )
 
         self._embedding_client = DashScopeEmbeddings(

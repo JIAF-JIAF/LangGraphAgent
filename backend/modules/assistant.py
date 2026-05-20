@@ -12,12 +12,14 @@ LangChain Agent 模块
 - 执行用户输入并返回结果
 """
 
-import os
+from datetime import datetime
 from typing import Optional, Dict, Any, List
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain.chains import LLMChain
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
+from modules.prompt import get_role_set_from_feeling
+from mcp_module.context import set_value, remove_value
 
 
 class DefaultToolInput(BaseModel):
@@ -125,40 +127,30 @@ class Agent:
         Returns:
             包含 answer、intermediate_steps 和 tool_messages 的字典
         """
-        if feeling:
-            self._feeling = feeling
+        self._feeling = feeling or {"feeling": "default", "score": 5}
+        set_value("user_id", uid)
 
-        if uid:
-            os.environ['DINGTALK_CURRENT_USER_ID'] = uid
-
-        # 动态注入当前日期时间作为上下文
-        from datetime import datetime
+        # 获取当前日期时间，通过 invoke 注入到 prompt
         current_datetime = datetime.now()
         current_date_str = current_datetime.strftime("%Y年%m月%d日")
-        current_time_str = current_datetime.strftime("%H:%M")
-        
-        # 在输入前添加时间提示，让模型知道当前时间
-        time_context = f"【当前时间：{current_date_str} {current_time_str}】"
-        enhanced_input = f"{time_context}\n\n{input}"
 
-        if self._agent:
-            # 使用 AgentExecutor（有工具）
-            result = self._agent_executor.invoke({
-                "input": enhanced_input,
-                "chat_history": chat_history or []
-            })
-            answer = result.get("output", str(result))
-            intermediate_steps = result.get("intermediate_steps", [])
-        else:
-            # 使用 LLMChain（无工具）
-            result = self._agent_executor.invoke({
-                "input": enhanced_input
-            })
-            answer = result.get("text", str(result))
-            intermediate_steps = []
+        # 构建运行时变量，注入到 prompt
+        role_set = get_role_set_from_feeling(self._feeling.get("feeling", "default"))
+        feel_score = self._feeling.get("score", 5)
 
-        if uid:
-            os.environ.pop('DINGTALK_CURRENT_USER_ID', None)
+        # 调用 AgentExecutor 执行
+        result = self._agent_executor.invoke({
+            "input": input,
+            "chat_history": chat_history or [],
+            "current_date": current_date_str,
+            "role_set": role_set,
+            "feelScore": feel_score
+        })
+
+        answer = result.get("output", str(result))
+        intermediate_steps = result.get("intermediate_steps", [])
+
+        remove_value("user_id")
 
         return {
             "answer": answer,

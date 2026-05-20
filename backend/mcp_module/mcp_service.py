@@ -9,7 +9,6 @@ MCP 服务模块
 - 将 MCP 工具转换为 LangChain 可调用的工具对象
 """
 
-import os
 import asyncio
 import concurrent.futures
 from typing import List, Any, Optional, Dict
@@ -20,8 +19,11 @@ from mcp.client.streamable_http import streamable_http_client
 
 import mcp_module.mcp_client as mcp_client
 import mcp_module.logger as logger
-import mcp_module.config as config
 from mcp_module.mcp_config_manager import mcp_config_manager
+from mcp_module.context import set_value, get_value, remove_value
+
+
+shared_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
 
 def _normalize_tool_args(kwargs: Dict[str, Any]) -> Dict[str, Any]:
@@ -135,11 +137,7 @@ class MCPToolService:
             def create_tool_call(tool_name: str = name, url: str = server_url):
                 def call_tool(**kwargs):
                     args = _normalize_tool_args(kwargs)
-                    
-                    # 自动传递当前用户ID给工具
-                    current_user_id = os.getenv("DINGTALK_CURRENT_USER_ID")
-                    if current_user_id:
-                        args["user_id"] = current_user_id
+                    args["user_id"] =  get_value("user_id")
                     
                     async def _call():
                         async with streamable_http_client(url) as (read_stream, write_stream, get_session_id):
@@ -157,9 +155,8 @@ class MCPToolService:
                     except RuntimeError:
                         return asyncio.run(_call())
                     else:
-                        with concurrent.futures.ThreadPoolExecutor() as pool:
-                            future = pool.submit(asyncio.run, _call())
-                            return future.result()
+                        future = shared_executor.submit(asyncio.run, _call())
+                        return future.result()
                 
                 return call_tool
             

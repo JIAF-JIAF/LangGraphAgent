@@ -110,7 +110,7 @@ class FeelingDetector:
                 emotion_scores[emotion] = count
 
         if not emotion_scores:
-            return {"feeling": "default", "score": 5}
+            return None
 
         # 找出匹配数最多的情绪
         max_emotion = max(emotion_scores, key=emotion_scores.get)
@@ -164,7 +164,7 @@ class FeelingDetector:
             print(f"LLM 情绪分析失败: {e}")
             return None
 
-    def detect(self, text: str, use_llm: bool = False) -> Dict[str, Any]:
+    def detect(self, text: str) -> Dict[str, Any]:
         """
         检测用户输入的情绪
 
@@ -178,14 +178,13 @@ class FeelingDetector:
         if not text or not isinstance(text, str):
             return {"feeling": "default", "score": 5}
 
-        # 优先使用 LLM 分析（如果可用且启用）
-        if use_llm and self.llm_client:
-            llm_result = self._analyze_by_llm(text)
-            if llm_result:
-                return llm_result
+        rule_result = self._analyze_by_rules(text)
+        if rule_result: return rule_result
 
-        # 回退到规则匹配
-        return self._analyze_by_rules(text)
+        llm_result = self._analyze_by_llm(text)
+        if llm_result: return llm_result
+
+        return {"feeling": "default", "score": 5}
 
     def get_emotion_info(self, feeling: str) -> Optional[str]:
         """

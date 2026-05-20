@@ -212,6 +212,24 @@ class RAGWorkflow:
                 context = "\n\n".join([doc.page_content for doc in documents])
                 answer = context
                 success = len(context) > 50  # 只有内容足够长才认为成功
+                # context = "\n\n".join([doc.page_content for doc in documents])
+                
+                # prompt = f"""基于以下参考资料回答用户问题。如果参考资料中没有相关信息，请如实告知用户。
+                #     参考资料：
+                #     {context}
+
+                #     用户问题：{query}
+
+                #     请根据参考资料生成回答："""
+
+                # try:
+                #     response = self.llm_client.chat.invoke([HumanMessage(content=prompt)])
+                #     answer = response.content
+                #     success = True
+                # except Exception as e:
+                #     self._log(f"[RAG] LLM 调用失败，使用原始文档: {e}", "WARNING")
+                #     answer = context
+                #     success = len(context) > 50
             
             self.memory.add_message(session_id, "assistant", answer)
             self._log(f"[RAG] 生成回答完成: {answer[:50]}...")

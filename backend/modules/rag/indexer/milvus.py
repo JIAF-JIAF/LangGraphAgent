@@ -5,6 +5,7 @@ Milvus Lite 索引器实现
 import os
 from typing import List, Optional, Dict, Any
 from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
 
 try:
     from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
@@ -277,8 +278,6 @@ class MilvusIndexer(BaseIndexer):
         Returns:
             对应的检索器实例
         """
-        from langchain_core.retrievers import BaseRetriever
-        
         search_kwargs = kwargs.get("search_kwargs", {"k": 3})
         
         class MilvusRetriever(BaseRetriever):

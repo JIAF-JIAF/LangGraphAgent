@@ -30,7 +30,6 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from .state import AgentState
 from .task_generators import TaskGeneratorChain
-from modules.prompt import create_prompt
 
 
 class LangGraphAgent:
@@ -121,7 +120,7 @@ class LangGraphAgent:
         query = state["query"]
         self._log(f"[节点: feeling_detect] 开始执行，查询: {query[:30]}...")
         
-        feeling = self._feeling_detector.detect(query, True)
+        feeling = self._feeling_detector.detect(query)
         self._log(f"[节点: feeling_detect] 情绪分析结果: {feeling}")
         
         return {"feeling": feeling}
@@ -326,9 +325,8 @@ class LangGraphAgent:
         
         # 获取 RAG 检索到的文档
         documents = state.get("documents", [])
-        
-        # 调用 Agent 执行任务
-        self._update_prompt_with_feeling(feeling)
+
+        # 调用 Agent 执行任务（feeling 变量通过 invoke 传入，运行时动态注入到 prompt）
         result = self._agent.invoke(enhanced_task, documents, state.get("chat_history", []), feeling)
         task_result = result.get("answer", "")
         
@@ -545,10 +543,9 @@ class LangGraphAgent:
         
         self._log(f"[节点: call_model] 开始执行，回答长度: {len(answer)}，对话历史长度: {len(chat_history)}")
         
-        # 如果回答无效，重新调用 Agent
+        # 如果回答无效，重新调用 Agent（feeling 变量通过 invoke 传入，运行时动态注入到 prompt）
         rag_success = state.get("rag_success", False)
         if not answer or (state.get("need_retrieve", False) and not rag_success):
-            self._update_prompt_with_feeling(feeling)
             result = self._agent.invoke(query, None, chat_history, feeling)
             answer = result.get("answer", "")
         
@@ -559,17 +556,6 @@ class LangGraphAgent:
         result_state["feeling"] = feeling
         
         return result_state
-
-    def _update_prompt_with_feeling(self, feeling: Dict[str, Any]):
-        """
-        根据情绪动态更新 Agent 的 prompt
-
-        Args:
-            feeling: 情绪分析结果
-        """
-        new_prompt = create_prompt(feeling=feeling)
-        self._agent.update_prompt(new_prompt)
-        self._log(f"[节点: call_model] 已根据情绪更新 prompt: {feeling['feeling']}")
 
     def _update_chat_history(self, state: AgentState, query: str, answer: str) -> AgentState:
         """
