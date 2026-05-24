@@ -906,21 +906,26 @@ BaseRouter.should_retrieve() # 返回 True
 
 **后端:**
 
-- Flask 3.0.0 - Web 框架
+- Flask >= 3.0.0 - Web 框架
 - OpenAI SDK >= 1.40.0 - AI API 客户端（兼容 DeepSeek）
-- Flask-CORS - 跨域支持
-- Flask-Limiter - 限流支持
-- numpy 2.4.4 - 数值计算
-- LangChain >= 0.3.0 - Agent 和工具框架
-- LangChain Core >= 0.3.0 - 核心组件
-- LangChain Community >= 0.3.0 - 社区组件
-- LangGraph >= 0.1.0 - 状态图工作流框架
+- Flask-CORS 6.0.1 - 跨域支持
+- Flask-Limiter >= 3.5.0 - 限流支持
+- numpy >= 1.26 - 数值计算
+- LangChain >= 1.0.0 - Agent 和工具框架
+- LangChain Core >= 1.0.0 - 核心组件
+- LangChain Community >= 0.4.0 - 社区组件
+- LangChain OpenAI >= 1.0.0 - OpenAI 集成
+- LangChain Text Splitters >= 1.0.0 - 文本分割
+- LangGraph >= 1.0.0 - 状态图工作流框架
 - langchain-chroma >= 0.1.0 - Chroma 集成
 - chromadb >= 0.5.0 - 向量数据库
 - pymilvus >= 2.4.0 - Milvus 支持（可选）
-- redis >= 5.0.0 - Redis 支持（可选，用于检查点持久化）
+- redis >= 7.2.0 - Redis 支持（可选，用于检查点持久化）
 - dashscope >= 1.20.0 - 阿里云百炼支持（可选）
-- MCP - Model Context Protocol（工具服务协议）
+- MCP >= 1.0.0 - Model Context Protocol（工具服务协议）
+- sentence-transformers 3.2.0 - 重排序模型
+- dingtalk-stream >= 0.24.3 - 钉钉 Stream API（可选）
+- pydantic-ai-skills >= 0.10.0 - Agent Skills 支持
 
 **前端:**
 
@@ -954,7 +959,6 @@ BaseRouter.should_retrieve() # 返回 True
 - [x] LangGraph 架构迁移
 - [x] 状态持久化检查点
 - [x] 智能任务规划（Task Planner）
-- [x] 反思校验器（Reflection Checker）
 - [x] 技能系统（Skill System）
 - [x] 技能匹配与执行引擎
 
