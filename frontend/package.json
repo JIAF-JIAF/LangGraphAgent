@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-pdf-viewer/core": "^3.12.0",
+    "@react-pdf-viewer/default-layout": "^3.12.0",
     "axios": "^1.16.0",
     "exceljs": "^4.4.0",
     "mammoth-plus-plus-2": "^1.7.2-11",

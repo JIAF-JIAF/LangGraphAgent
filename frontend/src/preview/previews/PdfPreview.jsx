@@ -1,56 +1,34 @@
-import { useState } from 'react';
-import { Document, Page, pdfjs } from 'react-pdf';
-import 'react-pdf/dist/Page/AnnotationLayer.css';
-import 'react-pdf/dist/Page/TextLayer.css';
-
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+import { Viewer, Worker } from '@react-pdf-viewer/core';
+import '@react-pdf-viewer/core/lib/styles/index.css';
+import { useMemo, useEffect } from 'react';
 
 export const PdfPreview = ({ blob, onError }) => {
-  const [numPages, setNumPages] = useState(null);
-  const [pageNumber, setPageNumber] = useState(1);
+  const fileUrl = useMemo(() => {
+    if (!blob) return null;
+    return URL.createObjectURL(blob);
+  }, [blob]);
 
-  const onDocumentLoadSuccess = ({ numPages }) => {
-    setNumPages(numPages);
-  };
+  useEffect(() => {
+    return () => {
+      if (fileUrl) {
+        URL.revokeObjectURL(fileUrl);
+      }
+    };
+  }, [fileUrl]);
+
+  if (!fileUrl) {
+    return null;
+  }
 
   return (
-    <div className="pdf-content">
-      <Document
-        file={blob}
-        onLoadSuccess={onDocumentLoadSuccess}
-        onLoadError={(error) => {
-          if (onError) onError(error.message);
-        }}
-        loading={<div className="preview-loading"><div className="spinner"></div><span>PDF 加载中...</span></div>}
-        error={<div className="preview-error"><span className="error-icon">❌</span><p>PDF 加载失败</p></div>}
-      >
-        <Page 
-          pageNumber={pageNumber} 
-          renderTextLayer={true}
-          renderAnnotationLayer={true}
+    <div className="pdf-content" style={{ height: '100%', width: '100%' }}>
+      <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
+        <Viewer
+          fileUrl={fileUrl}
+          plugins={[]}
+          onError={onError}
         />
-      </Document>
-      {numPages && (
-        <div className="pdf-controls">
-          <button
-            className="btn btn-sm"
-            disabled={pageNumber <= 1}
-            onClick={() => setPageNumber(pageNumber - 1)}
-          >
-            上一页
-          </button>
-          <span className="page-info">
-            {pageNumber} / {numPages}
-          </span>
-          <button
-            className="btn btn-sm"
-            disabled={pageNumber >= numPages}
-            onClick={() => setPageNumber(pageNumber + 1)}
-          >
-            下一页
-          </button>
-        </div>
-      )}
+      </Worker>
     </div>
   );
 };
