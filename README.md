@@ -58,11 +58,6 @@ chart-flow-longgraph/
 │   │   │   ├── planner/         # 任务规划器
 │   │   │   ├── reflection/      # 反思校验器
 │   │   │   └── task_generators/ # 任务生成器（责任链模式）
-│   │   │       ├── __init__.py
-│   │   │       ├── base.py
-│   │   │       ├── chain.py
-│   │   │       ├── default_handler.py
-│   │   │       └── rag_refine_handler.py
 │   │   ├── feeling/             # 情绪感知模块
 │   │   ├── rag/                 # 模块化 RAG 框架
 │   │   │   ├── __init__.py
@@ -82,13 +77,6 @@ chart-flow-longgraph/
 │   │       ├── manager.py       # 生命周期管理
 │   │       ├── models.py        # 数据模型
 │   │       └── tools/           # LangChain 工具封装
-│   │           ├── __init__.py
-│   │           ├── factory.py    # 工具工厂
-│   │           ├── skill_list.py
-│   │           ├── skill_instructions.py
-│   │           ├── skill_reference.py
-│   │           ├── skill_run_script.py
-│   │           └── skill_save_file.py
 │   ├── mcp_module/              # MCP 模块（工具服务）
 │   │   ├── __init__.py
 │   │   ├── config.py            # MCP 配置常量
@@ -100,12 +88,6 @@ chart-flow-longgraph/
 │   │   ├── mcp_service.py       # MCP 服务封装
 │   │   ├── start.py             # 启动脚本
 │   │   └── tools/               # 工具插件目录
-│   │       ├── __init__.py
-│   │       ├── registry.py
-│   │       ├── weather_plugin.py
-│   │       ├── weather_recommend_plugin.py
-│   │       ├── submit_form_plugin.py
-│   │       └── dingtalk/        # 钉钉工具集
 │   ├── knowledge_base/          # 知识库管理模块
 │   ├── db/                      # 向量数据库存储（Chroma）
 │   ├── user/                    # 用户管理模块
@@ -115,17 +97,9 @@ chart-flow-longgraph/
 │   │   ├── memory.py
 │   │   └── redis.py
 │   └── skills/                  # 技能库（SKILL.md 格式）
-│       ├── data-analysis/       # 数据分析技能
-│       ├── drawio-skill/        # 流程图绘制技能
-│       ├── tldraw-skill/        # 白板协作技能
-│       └── trip-plan/           # 旅行规划技能
 ├── frontend/                    # React 前端 (Vite)
 │   ├── src/
 │   │   ├── api/                 # API 接口封装
-│   │   │   ├── chat.js          # 聊天 API
-│   │   │   ├── mcpConfig.js     # MCP 配置 API
-│   │   │   ├── skillConfig.js   # 技能配置 API
-│   │   │   └── vectorDb.js      # 向量库 API
 │   │   ├── components/          # React 组件
 │   │   │   ├── chat/            # 聊天组件
 │   │   │   ├── config/          # 配置管理组件
