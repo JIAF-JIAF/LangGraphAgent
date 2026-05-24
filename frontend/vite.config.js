@@ -12,7 +12,8 @@ export default defineConfig({
     react(),
     viteExternalsPlugin({
       'react': 'React',
-      'react-dom': 'ReactDOM'
+      'react-dom': 'ReactDOM',
+      '@ali/react-zongheng': 'ZONGHENG'
     })
   ],
   server: {

@@ -1,13 +1,8 @@
 import { memo } from 'react';
 import useDatabaseStore from '../../stores/databaseStore';
 import useUiStore from '../../stores/uiStore';
+import { ALLOWED_EXTENSIONS, ACCEPT_STRING } from '../../constants/fileExtensions';
 
-/**
- * 数据库面板组件
- * @description 右侧主内容区，显示数据库详情、文档列表和文件上传功能
- *
- * @returns {React.ReactElement}
- */
 export const DatabasePanel = memo(() => {
   const {
     selectedDb,
@@ -18,8 +13,6 @@ export const DatabasePanel = memo(() => {
     deleteDocument
   } = useDatabaseStore();
   const { openPreviewSidebar } = useUiStore();
-
-  const allowedExtensions = ['.txt', '.pdf', '.md', '.csv', '.docx'];
 
   /**
    * 处理文件拖拽放置
@@ -70,7 +63,7 @@ export const DatabasePanel = memo(() => {
           <input
             type="file"
             multiple
-            accept=".txt,.pdf,.md,.csv,.docx"
+            accept={ACCEPT_STRING}
             onChange={handleFileSelect}
             className="hidden-file-input"
             disabled={uploading}
@@ -97,7 +90,7 @@ export const DatabasePanel = memo(() => {
               </p>
               <p className="upload-hint">支持多文件上传</p>
               <div className="supported-formats">
-                {allowedExtensions.map((ext) => (
+                {ALLOWED_EXTENSIONS.map((ext) => (
                   <span key={ext} className="format-tag">
                     {ext.toUpperCase().slice(1)}
                   </span>

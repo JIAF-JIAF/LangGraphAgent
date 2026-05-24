@@ -3,7 +3,6 @@ import vectorDbApi from '../api/vectorDb';
 import { ALLOWED_EXTENSIONS } from '../constants/fileExtensions';
 
 /**
- * 数据库信息类型定义
  * @typedef {Object} Database
  * @property {string} name - 数据库名称
  * @property {number} document_count - 文档数量
@@ -12,7 +11,6 @@ import { ALLOWED_EXTENSIONS } from '../constants/fileExtensions';
  */
 
 /**
- * 文档信息类型定义
  * @typedef {Object} Document
  * @property {string} filename - 文件名
  * @property {number} chunk_count - 分块数量
@@ -20,18 +18,14 @@ import { ALLOWED_EXTENSIONS } from '../constants/fileExtensions';
  */
 
 /**
- * 向量数据库状态管理 Store
- * @description 管理数据库列表、文档、文件上传等操作
- *
- * @returns {Object} 数据库状态和方法
- *
- * @example
- * ```jsx
- * const { databases, selectedDb, loadDatabases } = useDatabaseStore();
- * await loadDatabases();
- * ```
+ * @typedef {'success'|'error'|'warning'} MessageType
  */
-const useDatabaseStore = create((set, get) => ({
+
+/**
+ * 向量数据库管理器状态 Store
+ * @description 管理数据库列表、文档、上传、消息等状态
+ */
+const useVectorDbManagerStore = create((set, get) => ({
   /**
    * 数据库列表
    * @type {Database[]}
@@ -76,18 +70,43 @@ const useDatabaseStore = create((set, get) => ({
 
   /**
    * 消息类型
-   * @type {'success'|'error'|'warning'}
+   * @type {MessageType}
    */
   messageType: 'success',
 
   /**
+   * 创建模态框显示状态
+   * @type {boolean}
+   */
+  showCreateModal: false,
+
+  /**
+   * 新数据库名称
+   * @type {string}
+   */
+  newDbName: '',
+
+  /**
+   * 新数据库描述
+   * @type {string}
+   */
+  newDbDescription: '',
+
+  /**
    * 显示提示消息
    * @param {string} msg - 消息内容
-   * @param {'success'|'error'|'warning'} [type='success'] - 消息类型
+   * @param {MessageType} [type='success'] - 消息类型
    */
   showMessage: (msg, type = 'success') => {
     set({ message: msg, messageType: type });
     setTimeout(() => set({ message: '' }), 3000);
+  },
+
+  /**
+   * 清除消息
+   */
+  clearMessage: () => {
+    set({ message: '' });
   },
 
   /**
@@ -101,13 +120,16 @@ const useDatabaseStore = create((set, get) => ({
       if (response.status === 'success') {
         const databases = response.data;
         set({ databases });
-        if (!get().selectedDb && databases.length > 0) {
+        const { selectedDb } = get();
+        if (!selectedDb && databases.length > 0) {
           set({ selectedDb: databases[0] });
         }
+      } else {
+        get().showMessage('加载数据库列表失败', 'error');
       }
     } catch (error) {
       console.error('加载数据库失败:', error);
-      get().showMessage('加载数据库失败', 'error');
+      get().showMessage('加载数据库列表失败', 'error');
     } finally {
       set({ loading: false });
     }
@@ -146,55 +168,26 @@ const useDatabaseStore = create((set, get) => ({
   },
 
   /**
-   * 创建数据库
-   * @param {string} name - 数据库名称
-   * @param {string} [description] - 数据库描述
-   * @returns {Promise<boolean>} 是否创建成功
+   * 验证文件扩展名
+   * @param {File} file - 文件对象
+   * @returns {boolean} 是否有效
    */
-  createDatabase: async (name, description) => {
-    try {
-      const response = await vectorDbApi.createDatabase(name, description);
-      if (response.status === 'success') {
-        get().showMessage(response.message, 'success');
-        await get().loadDatabases();
-        return true;
-      } else {
-        get().showMessage(response.message, 'error');
-        return false;
-      }
-    } catch (error) {
-      get().showMessage('创建数据库失败', 'error');
-      return false;
-    }
+  isValidFile: (file) => {
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    return ALLOWED_EXTENSIONS.includes(ext);
   },
 
   /**
-   * 删除数据库
-   * @param {string} dbName - 数据库名称
-   * @returns {Promise<boolean>} 是否删除成功
+   * 过滤有效文件
+   * @param {FileList|File[]} files - 文件列表
+   * @returns {File[]} 有效文件数组
    */
-  deleteDatabase: async (dbName) => {
-    try {
-      const response = await vectorDbApi.deleteDatabase(dbName);
-      if (response.status === 'success') {
-        get().showMessage(response.message, 'success');
-        await get().loadDatabases();
-        if (get().selectedDb?.name === dbName) {
-          set({ selectedDb: null, documents: [] });
-        }
-        return true;
-      } else {
-        get().showMessage(response.message, 'error');
-        return false;
-      }
-    } catch (error) {
-      get().showMessage('删除数据库失败', 'error');
-      return false;
-    }
+  filterValidFiles: (files) => {
+    return Array.from(files).filter(file => get().isValidFile(file));
   },
 
   /**
-   * 上传文件到当前数据库
+   * 上传文件
    * @param {FileList|File[]} files - 文件列表
    * @returns {Promise<boolean>} 是否上传成功
    */
@@ -205,11 +198,7 @@ const useDatabaseStore = create((set, get) => ({
       return false;
     }
 
-    const validFiles = Array.from(files).filter((file) => {
-      const ext = '.' + file.name.split('.').pop().toLowerCase();
-      return ALLOWED_EXTENSIONS.includes(ext);
-    });
-
+    const validFiles = get().filterValidFiles(files);
     if (validFiles.length === 0) {
       showMessage('没有有效的文件，请上传 TXT、PDF、MD、CSV、DOCX、XLSX 或 XLS 文件', 'error');
       return false;
@@ -287,7 +276,110 @@ const useDatabaseStore = create((set, get) => ({
       showMessage('删除文档失败', 'error');
       return false;
     }
+  },
+
+  /**
+   * 打开创建数据库模态框
+   */
+  openCreateModal: () => {
+    set({ showCreateModal: true });
+  },
+
+  /**
+   * 关闭创建数据库模态框
+   */
+  closeCreateModal: () => {
+    set({ showCreateModal: false, newDbName: '', newDbDescription: '' });
+  },
+
+  /**
+   * 设置新数据库名称
+   * @param {string} name - 数据库名称
+   */
+  setNewDbName: (name) => {
+    set({ newDbName: name });
+  },
+
+  /**
+   * 设置新数据库描述
+   * @param {string} description - 数据库描述
+   */
+  setNewDbDescription: (description) => {
+    set({ newDbDescription: description });
+  },
+
+  /**
+   * 验证数据库名称格式
+   * @param {string} name - 数据库名称
+   * @returns {boolean} 是否有效
+   */
+  validateDbName: (name) => {
+    const nameRegex = /^[a-zA-Z0-9][a-zA-Z0-9-_.]{2,511}$/;
+    return nameRegex.test(name.trim());
+  },
+
+  /**
+   * 创建数据库
+   * @returns {Promise<boolean>} 是否创建成功
+   */
+  createDatabase: async () => {
+    const { newDbName, newDbDescription, showMessage, loadDatabases, closeCreateModal, validateDbName } = get();
+
+    if (!newDbName.trim()) {
+      showMessage('请输入数据库名称', 'warning');
+      return false;
+    }
+
+    if (!validateDbName(newDbName)) {
+      showMessage('数据库名称格式不正确，请使用英文、数字、下划线或连字符，长度3-512', 'warning');
+      return false;
+    }
+
+    try {
+      const response = await vectorDbApi.createDatabase(newDbName.trim(), newDbDescription.trim());
+      if (response.status === 'success') {
+        showMessage(response.message, 'success');
+        await loadDatabases();
+        closeCreateModal();
+        return true;
+      } else {
+        showMessage(response.message, 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('创建数据库失败:', error);
+      showMessage('创建数据库失败', 'error');
+      return false;
+    }
+  },
+
+  /**
+   * 删除数据库
+   * @param {string} dbName - 数据库名称
+   * @returns {Promise<boolean>} 是否删除成功
+   */
+  deleteDatabase: async (dbName) => {
+    const { showMessage, loadDatabases, selectedDb } = get();
+
+    try {
+      const response = await vectorDbApi.deleteDatabase(dbName);
+      if (response.status === 'success') {
+        showMessage(response.message, 'success');
+        await loadDatabases();
+        if (selectedDb?.name === dbName) {
+          set({ selectedDb: null, documents: [] });
+        }
+        return true;
+      } else {
+        showMessage(response.message, 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('删除数据库失败:', error);
+      showMessage('删除数据库失败', 'error');
+      return false;
+    }
   }
 }));
 
-export default useDatabaseStore;
+export default useVectorDbManagerStore;

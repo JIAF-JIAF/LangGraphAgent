@@ -47,7 +47,7 @@ ai_client = None
 
 # 从环境变量读取配置
 CHROMA_DB_DIR = os.getenv("VECTOR_STORE_PERSIST_DIRECTORY", "db/chroma")
-ALLOWED_EXTENSIONS = {'.txt', '.pdf', '.md', '.csv', '.docx'}
+ALLOWED_EXTENSIONS = {'.txt', '.pdf', '.md', '.csv', '.docx', '.xlsx', '.xls'}
 
 def init_ai_client():
     """初始化 AI 客户端"""

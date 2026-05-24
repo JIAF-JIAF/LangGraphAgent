@@ -1,10 +1,5 @@
 import { useState, useCallback } from 'react';
-
-/**
- * 支持的文件扩展名
- * @type {string[]}
- */
-const ALLOWED_EXTENSIONS = ['.txt', '.pdf', '.md', '.csv', '.docx'];
+import { ALLOWED_EXTENSIONS } from '../constants/fileExtensions';
 
 /**
  * 自定义 Hook - 文件上传

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import useUiStore from '../stores/uiStore';
 import useDatabaseStore from '../stores/databaseStore';
 import vectorDbApi from '../api/vectorDb';
-import { TextPreview, PdfPreview, WordPreview } from './previews';
+import { TextPreview, PdfPreview, WordPreview, ExcelPreview } from './previews';
 import { convertWordToCangjieFormat } from './utils/wordConverter';
 
 export const FilePreview = () => {
@@ -12,6 +12,7 @@ export const FilePreview = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pdfBlob, setPdfBlob] = useState(null);
+  const [excelBlob, setExcelBlob] = useState(null);
   const [fileType, setFileType] = useState(null);
   const [wordData, setWordData] = useState(null);
 
@@ -30,6 +31,9 @@ export const FilePreview = () => {
       case 'doc':
       case 'docx':
         return 'word';
+      case 'xlsx':
+      case 'xls':
+        return 'excel';
       default:
         return 'unsupported';
     }
@@ -42,6 +46,7 @@ export const FilePreview = () => {
     setError(null);
     setContent('');
     setPdfBlob(null);
+    setExcelBlob(null);
     setFileType(null);
     setWordData(null);
 
@@ -74,6 +79,11 @@ export const FilePreview = () => {
           const arrayBuffer = await blob.arrayBuffer();
           const jsonML = await convertWordToCangjieFormat(arrayBuffer);
           setWordData(jsonML);
+          setLoading(false);
+          break;
+
+        case 'excel':
+          setExcelBlob(blob);
           setLoading(false);
           break;
 
@@ -120,6 +130,8 @@ export const FilePreview = () => {
         return <PdfPreview blob={pdfBlob} onError={setError} />;
       case 'word':
         return <WordPreview wordData={wordData} />;
+      case 'excel':
+        return <ExcelPreview blob={excelBlob} />;
       case 'unsupported':
         return <TextPreview content={content} />;
       default:
