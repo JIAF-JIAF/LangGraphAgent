@@ -121,9 +121,24 @@ chart-flow-longgraph/
 │       └── trip-plan/           # 旅行规划技能
 ├── frontend/                    # React 前端 (Vite)
 │   ├── src/
-│   │   ├── components/          # React 前端 (组件)
-│   │   └── api/                 # React 前端 (API)
-│   └── package.json
+│   │   ├── api/                 # API 接口封装
+│   │   │   ├── chat.js          # 聊天 API
+│   │   │   ├── mcpConfig.js     # MCP 配置 API
+│   │   │   ├── skillConfig.js   # 技能配置 API
+│   │   │   └── vectorDb.js      # 向量库 API
+│   │   ├── components/          # React 组件
+│   │   │   ├── chat/            # 聊天组件
+│   │   │   ├── config/          # 配置管理组件
+│   │   │   ├── vectorDbManagerComponents/  # 向量库管理组件
+│   │   │   └── preview/         # 文件预览组件
+│   │   │       └── previews/    # 预览器（Word/Excel/PDF/Text）
+│   │   ├── constants/           # 常量定义
+│   │   ├── hooks/               # 自定义 Hooks
+│   │   └── stores/              # 状态管理（Zustand）
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── Dockerfile
+│   └── nginx.conf
 ├── resources/                   # 资源文件
 ├── .env                         # 环境变量配置
 └── .gitignore
@@ -321,6 +336,9 @@ skills = installer.list_installed()
 | **技能管理**           | 安装、卸载、配置技能，可通过管理页面动态添加新技能   |
 | **MCP 工具配置**       | 添加、删除 MCP 服务器，配置 MCP 工具连接参数 |
 | **数据库管理（RAG 向量库）** | 创建、删除向量数据库，上传文档，管理知识库       |
+| **钉钉文字仓颉编辑器**      | 集成钉钉文字仓颉编辑器，支持 Word 文档在线预览 |
+| **钉钉表格纵横 SDK**     | 集成钉钉表格纵横 SDK，支持 Excel 文件在线预览 |
+| **PDF 文件预览**       | 支持 PDF 文件在线预览，无需下载即可查看文档内容 |
 
 ### 技能管理
 
@@ -344,6 +362,39 @@ skills = installer.list_installed()
 - **创建知识库**: 创建新的向量数据库，设置名称和描述
 - **删除知识库**: 删除不需要的知识库及其索引数据
 - **上传文档**: 上传 .txt、.pdf、.docx 格式的文档，自动向量化
+
+### 钉钉文字仓颉编辑器
+
+集成钉钉文字仓颉编辑器，提供文档在线预览能力。
+
+官网：https://page.dingtalk.com/app/we-editor/site/index.html?spm=a2q1e.24441682.0.0.202e789eXdrRGA
+
+功能特性：
+
+- **Word 文档预览**: 在线预览 .doc、.docx 格式文档，无需下载
+- **格式保留**: 完整保留文档格式、样式、表格等元素
+- **高清渲染**: 保持文档原始排版和清晰度
+
+### 钉钉表格纵横 SDK
+
+集成钉钉表格纵横 SDK，提供表格在线预览能力。
+
+官网：https://page.dingtalk.com/app/alidocs/zongheng-site/index.html#/
+
+功能特性：
+
+- **Excel 文件预览**: 在线预览 .xls、.xlsx 格式文件，支持复杂表格
+- **格式兼容**: 完美兼容 Excel 各种格式和功能
+- **高清渲染**: 保持表格原始排版和清晰度
+
+### PDF 文件预览
+
+支持 PDF 文件的在线预览功能：
+
+- **PDF 文档预览**: 在线预览 .pdf 格式文件，无需下载即可查看
+- **高清渲染**: 保持文档原始排版和清晰度
+- **快速加载**: 优化加载速度，提升用户体验
+- **多页浏览**: 支持多页 PDF 文档的流畅浏览
 
 ### 访问配置中心
 
@@ -1033,18 +1084,6 @@ REDIS_PORT=6379
 - **待办事项**: 创建钉钉待办任务
 - **情绪感知**: 根据用户情绪调整回复语气
 
-### 测试验证
-
-钉钉智能会话助手已在钉钉内完成测试验证，测试截图位于 `resources/` 目录：
-
-| 截图文件                | 说明      |
-| ------------------- | ------- |
-| `qa_test.png`       | 智能问答测试  |
-| `schedule_test.png` | 日程创建测试  |
-| `todo_test.png`     | 待办创建测试  |
-| `chat_test.png`     | 多轮对话测试  |
-| `db_manager.png`    | 向量库管理界面 |
-
 ### 钉钉部署配置
 
 1. 在钉钉开放平台创建企业内部应用
@@ -1082,24 +1121,16 @@ DINGTALK_CLIENT_SECRET=your_app_secret
 
 #### 核心功能展示
 
-| 智能问答与知识库(RAG)                           | 日程管理(MCP)                          | 工具调用与任务规划                             |
-| --------------------------------------- | ---------------------------------- | ------------------------------------- |
-| ![智能问答与知识库(RAG)](resources/qa_test.png) | ![日程创建测试](resources/todo_test.png) | ![天气查询与旅行计划](resources/too_taskl.png) |
+![智能问答与知识库(RAG)、日程管理(MCP)、工具调用与任务规划](resources/drawnix-base.png)
 
-#### 复杂任务规划展示
+#### 复杂任务规划与执行
 
-| 任务规划                                  | 任务执行                                  | 结果汇总                                  |
-| ------------------------------------- | ------------------------------------- | ------------------------------------- |
-| ![任务规划](resources/complex_task_2.png) | ![任务执行](resources/complex_task_3.png) | ![结果汇总](resources/complex_task_4.png) |
+![复杂任务规划与执行](resources/drawnix-plan.png)
 
-#### 技能使用展示
+#### 技能使用（SKILL）
 
-| 技能触发                                  | 步骤执行                                  | 结果生成                                  |
-| ------------------------------------- | ------------------------------------- | ------------------------------------- |
-| ![技能触发](resources/tldraw%20-%201.png) | ![步骤执行](resources/tldraw%20-%202.png) | ![结果生成](resources/tldraw%20-%203.png) |
+![技能使用展示](resources/drawnix.png)
 
-#### 配置中心
+#### 配置管理界面（支持预览 word excel 等文件）
 
-提供可视化的配置管理前端界面：
-
-![向量库管理](resources/db_manager.png)
+![配置管理界面](resources/agnet-config.png)
