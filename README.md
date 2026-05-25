@@ -59,6 +59,12 @@ chart-flow-longgraph/
 │   │   │   ├── reflection/      # 反思校验器
 │   │   │   └── task_generators/ # 任务生成器（责任链模式）
 │   │   ├── feeling/             # 情绪感知模块
+│   │   ├── intent/              # 意图识别模块（2026-05 新增）
+│   │   │   ├── __init__.py
+│   │   │   ├── intent_types.py  # 意图类型定义
+│   │   │   ├── intent_registry.py # 意图注册表（动态注册）
+│   │   │   ├── recognizer.py    # LLM 意图识别器（L3）
+│   │   │   └── router.py        # 分层漏斗路由器（L1+L2+L3）
 │   │   ├── rag/                 # 模块化 RAG 框架
 │   │   │   ├── __init__.py
 │   │   │   ├── rag.py           # RAG 工作流核心
@@ -138,17 +144,70 @@ chart-flow-longgraph/
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
-│                              LangGraph 状态图                                     │
+│                              LangGraph 状态图（2026-05 更新）                            │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 
-START → feeling_detect → router → ┌── 需要检索 ──→ retrieve → generate → plan
-                                   │                                        │
-                                   └── 不需要检索 ──→ plan ←─────────────────┘
-                                                        │
-                                                        ▼
-                                      execute_task → check_task_complete → ┌── 有更多任务 ──→ execute_task
-                                                                           │
-                                                                           └── 所有任务完成 ──→ call_model → END
+START → feeling_detect → intent_recognize → router → ┌── 需要检索 ──→ retrieve → generate → plan
+                                    │                │                                        │
+                                    │                └── 不需要检索 ──→ plan ←─────────────────┘
+                                    │                                     │
+                                    │                                     ▼
+                                    │                   execute_task → check_task_complete → ┌── 有更多任务 ──→ execute_task
+                                    │                                                                        │
+                                    │                                                                        └── 所有任务完成 ──→ call_model → END
+                                    │
+                                    └── 意图识别结果存储在 state["intents"]，供后续节点使用
+```
+
+### 意图识别节点详解
+
+`intent_recognize` 是新增的意图识别节点，采用 **分层漏斗路由架构**：
+
+```
+intent_recognize
+    │
+    ▼
+IntentRouter.route(query)
+    │
+    ├─── L1 关键词匹配（<1ms）───────────────────────────────────────────────┐
+    │   检查固定指令: /help, exit, yes, no...                               │
+    │   命中 → 直接返回 Intent                                              │
+    │                                                                        │
+    ├─── L2 向量语义匹配（保留入口）─────────────────────────────────────────┤
+    │   暂未实现，返回 None                                                  │
+    │                                                                        │
+    └─── L3 LLM 意图识别（1-2s）─────────────────────────────────────────────┤
+        IntentRecognizer.recognize(query)                                   │
+        │                                                                   │
+        ├── 构建 Prompt（包含所有已注册意图类型及描述）                        │
+        ├── 调用 LLM 返回结构化 JSON                                         │
+        └── 解析为 List[Intent]                                              │
+                                                                            │
+    输出: intents = [                                                       │
+        Intent(type="rag_exams", category=RAG, content="查询行测技巧", ...), │
+        Intent(type="skill_drawio", category=SKILL, content="画架构图", ...) │
+    ]                                                                       │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 意图类型动态注册
+
+系统启动时自动从多个来源注册意图类型：
+
+```
+factory.py 初始化流程:
+    │
+    ├── IntentRegistry()                    # 创建注册表
+    │   └── 自动注册系统意图: system_help, system_exit, system_confirm
+    │
+    ├── register_from_skills()              # 从技能注册
+    │   └── 生成意图: skill_drawio-skill, skill_analysis...
+    │
+    ├── register_from_knowledge_bases()     # 从知识库注册
+    │   └── 生成意图: rag_exams, rag_politics...
+    │
+    └── register_from_mcp_tools()           # 从 MCP 工具注册
+        └── 生成意图: mcp_weather, mcp_dingtalk_schedule...
 ```
 
 ### execute\_task 节点详解
@@ -183,6 +242,7 @@ LangChain Agent.invoke()
 | 节点                    | 职责   | 说明                                      |
 | --------------------- | ---- | --------------------------------------- |
 | `feeling_detect`      | 情绪检测 | 检测用户情绪，动态更新 Prompt              |
+| `intent_recognize`    | 意图识别 | **新增节点**：识别用户意图，支持多意图识别（L1关键词+L3 LLM） |
 | `router`              | 智能路由 | 判断是否需要检索，选择知识库                |
 | `retrieve`            | 文档检索 | 从向量库检索相关文档                       |
 | `generate`            | 生成回答 | 基于检索结果生成回答                       |
@@ -192,6 +252,92 @@ LangChain Agent.invoke()
 | `call_model`          | 调用模型 | 最终回复生成                              |
 
 **注意**: 技能执行已从 LangGraph 调度层转移到 LangChain Agent，通过 tool calling 自主发现和执行技能。
+
+## 意图识别系统
+
+系统支持基于分层漏斗路由的意图识别，能够准确识别用户意图并支持多意图场景。
+
+### 架构设计
+
+采用 **分层漏斗路由架构**，依次尝试 L1 → L2 → L3，任一层命中即返回：
+
+```
+用户请求
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  L1 关键词匹配（<1ms）                                                        │
+│  检查固定指令: /help, exit, yes, no, 确认, 取消...                            │
+│  命中 → 直接返回 Intent                                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+    │ 未命中
+    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  L2 向量语义匹配（保留入口，暂未实现）                                         │
+│  基于向量相似度匹配意图示例                                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+    │ 未命中
+    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  L3 LLM 意图识别（1-2s）                                                      │
+│  构建 Prompt → 调用 LLM → 解析 JSON → 返回 List[Intent]                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 意图类型
+
+| 类别 | 枚举值 | 说明 | 示例 |
+|-----|-------|------|------|
+| RAG | `rag` | 知识库检索 | rag_exams, rag_politics |
+| SKILL | `skill` | 技能执行 | skill_drawio-skill, skill_analysis |
+| MCP | `mcp` | MCP 工具调用 | mcp_weather, mcp_dingtalk_schedule |
+| SYSTEM | `system` | 系统指令 | system_help, system_exit |
+
+### 多意图识别
+
+系统支持识别包含多个意图的用户请求：
+
+```
+用户输入: "先帮我查询行测蒙题技巧，再帮我画一个架构图"
+
+识别结果:
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  意图[1]:                                                                    │
+│    - 类型: rag_exams                                                         │
+│    - 类别: rag                                                               │
+│    - 内容: 查询行测绝杀蒙题技巧                                                │
+│    - 目标: knowledge_base:exams                                              │
+│                                                                             │
+│  意图[2]:                                                                    │
+│    - 类型: skill_drawio-skill                                                │
+│    - 类别: skill                                                             │
+│    - 内容: 画一个架构图                                                       │
+│    - 目标: skill:drawio-skill                                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 核心文件
+
+| 文件 | 职责 |
+|------|------|
+| `intent_types.py` | 定义 Intent、IntentCategory、IntentConstants |
+| `intent_registry.py` | 动态注册意图类型（从 MCP + Skill + RAG） |
+| `recognizer.py` | LLM 意图识别（L3 层） |
+| `router.py` | 分层漏斗路由（L1 + L2 + L3） |
+
+### 与任务规划的关系
+
+| 对比项 | 意图识别 | 任务规划 |
+|--------|---------|----------|
+| 目的 | 识别"要做什么"（What） | 规划"怎么做"（How） |
+| 触发条件 | 所有请求 | 复杂意图（general_chat） |
+| 输出 | `List[Intent]` | `List[SubTask]` |
+| 延迟 | <2s | 1-3s |
+
+**简单意图直接执行，复杂意图才需要规划：**
+
+- `rag`, `skill`, `mcp` → 直接路由到执行节点
+- `general_chat` → 先规划再执行
 
 ## 情绪感知
 
