@@ -71,7 +71,15 @@ class TaskState(TypedDict):
     is_task_completed: bool                          # 任务是否完成
 
 
-class AgentState(ContextState, RAGState, TaskState):
+class IntentState(TypedDict):
+    """意图识别相关状态"""
+    intents: List[Dict[str, Any]]                    # 意图列表
+    is_multi_intent: bool                            # 是否多意图
+    current_intent_idx: int                          # 当前处理的意图索引
+    current_intent: Optional[Dict[str, Any]]         # 当前意图
+
+
+class AgentState(ContextState, RAGState, TaskState, IntentState):
     """完整 Agent 状态（多重继承组合所有子状态）"""
     pass
 
@@ -94,4 +102,8 @@ def create_initial_state(
         "subtasks": [],
         "current_task_idx": 0,
         "is_task_completed": False,
+        "intents": [],
+        "is_multi_intent": False,
+        "current_intent_idx": 0,
+        "current_intent": None,
     }

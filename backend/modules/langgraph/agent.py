@@ -69,6 +69,7 @@ class LangGraphAgent:
         checkpointer: Any,
         feeling_detector: Any,
         task_planner: Any,
+        intent_router: Any = None,
         verbose: bool = True,
     ):
         """
@@ -80,6 +81,7 @@ class LangGraphAgent:
             checkpointer: 检查点存储实例（可替换），需实现 LangGraph CheckpointSaver 接口
             feeling_detector: 感情侦测器实例（可替换），需实现 detect(text, detailed) 方法
             task_planner: 任务规划器实例（可替换），需实现 plan(query, context) 方法
+            intent_router: 意图路由器实例（可替换），需实现 route(query) 方法
             verbose: 是否输出详细日志
 
         替换说明：
@@ -92,6 +94,7 @@ class LangGraphAgent:
         self._checkpointer = checkpointer
         self._feeling_detector = feeling_detector
         self._task_planner = task_planner
+        self._intent_router = intent_router
         self._verbose = verbose
         self._graph = None
 
@@ -114,6 +117,47 @@ class LangGraphAgent:
         log(f"[节点: feeling_detect] 情绪分析结果: {feeling}", "LangGraph")
 
         return {"feeling": feeling}
+
+    def _intent_recognize_node(self, state: AgentState) -> AgentState:
+        """
+        意图识别节点：识别用户意图（支持多意图）
+
+        Args:
+            state: 当前状态（包含 query）
+
+        Returns:
+            更新后的状态（包含 intents, is_multi_intent, current_intent）
+        """
+        query = state["query"]
+        query_preview = query[:30] if len(query) > 30 else query
+        log(f"[节点: intent_recognize] 开始意图识别: {query_preview}...", "LangGraph")
+
+        if not self._intent_router:
+            log(f"[节点: intent_recognize] 未配置意图路由器，跳过意图识别", "LangGraph")
+            return {
+                "intents": [],
+                "is_multi_intent": False,
+                "current_intent_idx": 0,
+                "current_intent": None,
+            }
+
+        intents = self._intent_router.route(query)
+        is_multi_intent = len(intents) > 1
+
+        log(f"[节点: intent_recognize] 识别到 {len(intents)} 个意图，是否多意图: {is_multi_intent}", "LangGraph")
+        for i, intent in enumerate(intents):
+            content_preview = intent.content[:30] if len(intent.content) > 30 else intent.content
+            log(f"  [{i+1}] {intent.type}: {content_preview}...", "LangGraph")
+
+        intents_data = [intent.to_dict() for intent in intents]
+        current_intent = intents_data[0] if intents_data else None
+
+        return {
+            "intents": intents_data,
+            "is_multi_intent": is_multi_intent,
+            "current_intent_idx": 0,
+            "current_intent": current_intent,
+        }
 
     def _router_node(self, state: AgentState) -> AgentState:
         """
@@ -349,16 +393,21 @@ class LangGraphAgent:
 
     def _build_graph(self):
         """
-        构建状态图（简化 RAG 流程）
+        构建状态图（简化 RAG 流程 + 意图识别）
 
-        START → feeling_detect → router → ┌── 需要检索 ──→ retrieve → plan
-                                           │                                    │
-                                           └── 不需要检索 ──→ plan ←─────────────┘
-                                                                │
-                                                                ▼
-                                              execute_task → check_task_complete → ┌── 有更多任务 ──→ execute_task
-                                                                                   │
-                                                                                   └── 所有任务完成 ──→ call_model → END
+        START → feeling_detect → intent_recognize → router → ┌── 需要检索 ──→ retrieve → plan
+                                                              │                                    │
+                                                              └── 不需要检索 ──→ plan ←─────────────┘
+                                                                                                   │
+                                                                                                   ▼
+                                                 execute_task → check_task_complete → ┌── 有更多任务 ──→ execute_task
+                                                                                      │
+                                                                                      └── 所有任务完成 ──→ call_model → END
+
+        意图识别流程说明：
+        - intent_recognize 节点：识别用户意图（支持多意图）
+        - 多意图时，按顺序执行每个意图
+        - 单意图时，直接进入原有流程
 
         RAG 流程说明：
         - retrieve 节点：检索文档，存入 state["documents"]
@@ -371,6 +420,7 @@ class LangGraphAgent:
 
         # 添加节点
         self._graph.add_node("feeling_detect", self._feeling_detect_node)
+        self._graph.add_node("intent_recognize", self._intent_recognize_node)
         self._graph.add_node("router", self._router_node)
         self._graph.add_node("retrieve", self._retrieve_node)
         self._graph.add_node("plan", self._plan_node)
@@ -378,9 +428,10 @@ class LangGraphAgent:
         self._graph.add_node("check_task_complete", self._check_task_complete_node)
         self._graph.add_node("call_model", self._call_model_node)
 
-        # 基础流程：情绪检测 -> 路由
+        # 基础流程：情绪检测 -> 意图识别 -> 路由
         self._graph.add_edge(START, "feeling_detect")
-        self._graph.add_edge("feeling_detect", "router")
+        self._graph.add_edge("feeling_detect", "intent_recognize")
+        self._graph.add_edge("intent_recognize", "router")
 
         # 路由分支：检索或直接规划
         self._graph.add_conditional_edges(

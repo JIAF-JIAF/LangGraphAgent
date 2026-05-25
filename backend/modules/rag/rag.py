@@ -75,6 +75,22 @@ class RAGWorkflow:
         log(f"[RAG] 检索决策: {need}", "RAG")
         return need
 
+    def get_available_knowledge_bases(self) -> List[Dict[str, str]]:
+        """
+        获取所有可用知识库信息
+
+        Returns:
+            知识库信息列表，每个元素包含 name 和 description
+        """
+        result = []
+        for kb_name in self.indexers.keys():
+            kb_info = kb_manager.get_database(kb_name)
+            result.append({
+                "name": kb_name,
+                "description": kb_info.get("description", f"查询 {kb_name} 知识库") if kb_info else f"查询 {kb_name} 知识库"
+            })
+        return result
+
     def select_knowledge_base(self, query: str) -> str:
         """
         选择知识库

@@ -10,6 +10,7 @@ LangGraph 状态模块
 - ContextState: 上下文（query, session_id, uid, chat_history）
 - RAGState: RAG 检索（documents, answer, feeling, need_retrieve）
 - TaskState: 任务规划（subtasks, current_task_idx, is_task_completed）
+- IntentState: 意图识别（intents, is_multi_intent, current_intent_idx）
 """
 
 from .base import (
@@ -17,6 +18,7 @@ from .base import (
     ContextState,
     RAGState,
     TaskState,
+    IntentState,
     FeelingState,
     SubTaskState,
     create_initial_state,
@@ -27,6 +29,7 @@ __all__ = [
     "ContextState",
     "RAGState",
     "TaskState",
+    "IntentState",
     "FeelingState",
     "SubTaskState",
     "create_initial_state",
