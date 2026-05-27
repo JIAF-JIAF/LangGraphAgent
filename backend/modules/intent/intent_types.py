@@ -14,16 +14,18 @@ class IntentCategory(Enum):
     """
     意图类别枚举
     
-    意图分为三大类：
+    意图分为以下类别：
     - MCP: MCP 工具调用
     - SKILL: 技能执行
     - RAG: 知识库检索
-    - SYSTEM: 系统指令
+    - CHAT: 普通对话（闲聊、问候、感谢等）
+    - SYSTEM: 系统指令（帮助、退出等）
     """
     
     MCP = "mcp"
     SKILL = "skill"
     RAG = "rag"
+    CHAT = "chat"
     SYSTEM = "system"
 
 
@@ -107,4 +109,15 @@ class IntentConstants:
         "system_exit": "退出",
         "system_confirm": "确认",
         "system_cancel": "取消",
+    }
+    
+    CHAT_INTENTS = {
+        "general_chat": "通用对话，处理闲聊、问候、感谢等日常对话",
+    }
+    
+    SIMPLE_CATEGORIES = {
+        IntentCategory.RAG, 
+        IntentCategory.SKILL, 
+        IntentCategory.MCP,
+        IntentCategory.CHAT,
     }

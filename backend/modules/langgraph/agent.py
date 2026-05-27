@@ -1,16 +1,26 @@
 """
 LangGraph Agent 实现
 
-标准 LangGraph RAG 流程，包含任务规划：
+意图路由 + RAG + 任务规划架构：
 
-START → feeling_detect → router → ┌── 需要检索 ──→ retrieve → plan
-                                   │                                    │
-                                   └── 不需要检索 ──→ plan ←─────────────┘
-                                                                        │
-                                                                        ▼
-                                      execute_task → check_task_complete → ┌── 有更多任务 ──→ execute_task
-                                                                           │
-                                                                           └── 所有任务完成 ──→ call_model → END
+START → feeling_detect → intent_recognize → intent_router → ┌── direct ──→ execute_direct → call_model
+                                                              │
+                                                              ├── plan ──→ router → ┌── retrieve → plan
+                                                              │                      │
+                                                              │                      └── plan
+                                                              │                              │
+                                                              └── system ──→ call_model      ▼
+                                                                                  execute_task → check → call_model
+
+架构说明：
+- 意图识别：识别用户意图（支持多意图）
+- 意图路由：根据意图类型决定执行路径
+  - direct: 简单意图（RAG/Skill/MCP）直接执行，跳过规划
+  - plan: 复杂意图需要规划，走原有流程
+  - system: 系统指令直接返回
+- RAG 检索：从知识库检索相关文档
+- 任务规划：将复杂需求拆分为子任务
+- 任务执行：按顺序执行子任务
 
 采用 LangGraph 标准会话管理：
 - 使用 Checkpointer 进行状态持久化
@@ -35,9 +45,13 @@ from typing import Optional, Dict, Any, List, Literal
 from langgraph.graph import StateGraph, END, START
 
 from modules.logger import log
+from modules.intent import IntentCategory, IntentConstants
+from modules.context import AgentContext
 from .states import AgentState, create_initial_state
 from .task_generators import TaskGeneratorChain
 from .context_builder import ContextBuilder
+from .executors import ExecutorRegistry
+from .refiners import RefinerRegistry, RefineContext
 
 
 class LangGraphAgent:
@@ -97,6 +111,13 @@ class LangGraphAgent:
         self._intent_router = intent_router
         self._verbose = verbose
         self._graph = None
+        
+        self._executors = ExecutorRegistry.build_all(
+            rag_workflow=rag_workflow,
+            agent=agent,
+        )
+        
+        self._refiners = RefinerRegistry.build_all()
 
         self._build_graph()
 
@@ -157,6 +178,89 @@ class LangGraphAgent:
             "is_multi_intent": is_multi_intent,
             "current_intent_idx": 0,
             "current_intent": current_intent,
+        }
+
+    def _route_by_intent(self, state: AgentState) -> Literal["direct", "plan", "system"]:
+        """
+        条件路由：根据意图类型决定执行路径
+
+        Args:
+            state: 当前状态（包含 intents）
+
+        Returns:
+            "direct": 简单意图直接执行
+            "plan": 复杂意图需要规划
+            "system": 系统指令
+        """
+        intents = state.get("intents", [])
+
+        if not intents:
+            return "plan"
+
+        for intent_data in intents:
+            category = IntentCategory(intent_data["category"])
+            if category == IntentCategory.SYSTEM:
+                return "system"
+
+        for intent_data in intents:
+            category = IntentCategory(intent_data["category"])
+            if category not in IntentConstants.SIMPLE_CATEGORIES:
+                return "plan"
+
+        return "direct"
+
+    def _intent_router_node(self, state: AgentState) -> AgentState:
+        """
+        意图路由节点：根据意图类型决定执行路径
+
+        Args:
+            state: 当前状态（包含 intents）
+
+        Returns:
+            更新后的状态（包含 execution_mode）
+        """
+        intents = state.get("intents", [])
+        route = self._route_by_intent(state)
+
+        if not intents:
+            log(f"[节点: intent_router] 无意图，走规划模式", "LangGraph")
+        elif route == "system":
+            log(f"[节点: intent_router] 检测到系统指令，走系统模式", "LangGraph")
+        elif route == "plan":
+            log(f"[节点: intent_router] 检测到复杂意图，走规划模式", "LangGraph")
+        else:
+            log(f"[节点: intent_router] 全是简单意图，走直接执行模式", "LangGraph")
+        
+        log(f"  意图数量: {len(intents)}", "LangGraph")
+
+        return {"execution_mode": route}
+
+    def _execute_direct_node(self, state: AgentState) -> AgentState:
+        """
+        直接执行节点：按顺序执行简单意图（RAG/Skill/MCP）
+
+        Args:
+            state: 当前状态（包含 intents）
+
+        Returns:
+            更新后的状态（包含 intent_results）
+        """
+        intents = state.get("intents", [])
+        
+        log(f"[节点: execute_direct] 开始直接执行 {len(intents)} 个意图", "LangGraph")
+        
+        context = {
+            "query": state["query"],
+            "feeling": state["feeling"],
+            "chat_history": state.get("chat_history", []),
+        }
+        
+        results = ExecutorRegistry.execute_all(intents, context, self._executors)
+        
+        log(f"[节点: execute_direct] 执行完成，收集到 {len(results)} 个结果", "LangGraph")
+
+        return {
+            "intent_results": results,
         }
 
     def _router_node(self, state: AgentState) -> AgentState:
@@ -262,12 +366,13 @@ class LangGraphAgent:
             log(f"[节点: execute_task] 注入 {len(documents)} 个RAG文档作为上下文", "LangGraph")
 
         # 调用 Agent 执行任务
-        result = self._agent.invoke(
-            enhanced_task,
-            state.get("session_id", "default"),
-            state.get("chat_history", []),
-            feeling
+        agent_context = AgentContext(
+            session_id=state.get("session_id", "default"),
+            chat_history=state.get("chat_history", []),
+            feeling=feeling
         )
+        
+        result = self._agent.invoke(enhanced_task, agent_context)
         task_result = result.get("answer", "")
 
         log(f"[节点: execute_task] 任务执行完成: {task_result[:50]}...", "LangGraph")
@@ -364,27 +469,24 @@ class LangGraphAgent:
         调用模型节点：生成最终回答，更新对话历史
 
         Args:
-            state: 当前状态（包含 query, answer, chat_history, feeling）
+            state: 当前状态（包含 query, answer, chat_history, feeling, intent_results）
 
         Returns:
             更新后的状态（包含最终回答和新消息增量）
         """
         query = state["query"]
-        answer = state["answer"]
+        answer = state.get("answer", "")
         chat_history = state.get("chat_history", [])
         feeling = state["feeling"]
+        intent_results = state.get("intent_results", [])
 
-        log(f"[节点: call_model] 开始执行，回答长度: {len(answer)}，对话历史长度: {len(chat_history)}", "LangGraph")
-
-        # RAG 检索失败或无答案时，直接调用 Agent 生成
-        rag_success = state.get("rag_success", False)
-        if not answer or (state.get("need_retrieve", False) and not rag_success):
-            result = self._agent.invoke(query, None, chat_history, feeling)
-            answer = result.get("answer", "")
+        log(f"[节点: call_model] 开始执行，回答长度: {len(answer)}，对话历史长度: {len(chat_history)}，意图结果数量: {len(intent_results)}", "LangGraph")
+        
+        context = RefineContext.from_state(state)
+        answer = RefinerRegistry.refine(context, self._agent, self._refiners)
 
         log(f"[节点: call_model] 执行完成: {answer[:50]}...", "LangGraph")
 
-        # 使用 ContextBuilder 构建对话历史增量
         return {
             "answer": answer,
             "feeling": feeling,
@@ -393,21 +495,21 @@ class LangGraphAgent:
 
     def _build_graph(self):
         """
-        构建状态图（简化 RAG 流程 + 意图识别）
+        构建状态图（意图路由 + RAG + 任务规划）
 
-        START → feeling_detect → intent_recognize → router → ┌── 需要检索 ──→ retrieve → plan
-                                                              │                                    │
-                                                              └── 不需要检索 ──→ plan ←─────────────┘
-                                                                                                   │
-                                                                                                   ▼
-                                                 execute_task → check_task_complete → ┌── 有更多任务 ──→ execute_task
-                                                                                      │
-                                                                                      └── 所有任务完成 ──→ call_model → END
+        START → feeling_detect → intent_recognize → intent_router → ┌── direct ──→ execute_direct → call_model
+                                                                      │
+                                                                      ├── plan ──→ router → ┌── retrieve → plan
+                                                                      │                      │
+                                                                      │                      └── plan
+                                                                      │                              │
+                                                                      └── system ──→ call_model      ▼
+                                                                                          execute_task → check → call_model
 
-        意图识别流程说明：
-        - intent_recognize 节点：识别用户意图（支持多意图）
-        - 多意图时，按顺序执行每个意图
-        - 单意图时，直接进入原有流程
+        意图路由说明：
+        - direct: 简单意图（RAG/Skill/MCP）直接执行，跳过规划
+        - plan: 复杂意图需要规划，走原有流程
+        - system: 系统指令直接返回
 
         RAG 流程说明：
         - retrieve 节点：检索文档，存入 state["documents"]
@@ -421,6 +523,8 @@ class LangGraphAgent:
         # 添加节点
         self._graph.add_node("feeling_detect", self._feeling_detect_node)
         self._graph.add_node("intent_recognize", self._intent_recognize_node)
+        self._graph.add_node("intent_router", self._intent_router_node)
+        self._graph.add_node("execute_direct", self._execute_direct_node)
         self._graph.add_node("router", self._router_node)
         self._graph.add_node("retrieve", self._retrieve_node)
         self._graph.add_node("plan", self._plan_node)
@@ -428,19 +532,33 @@ class LangGraphAgent:
         self._graph.add_node("check_task_complete", self._check_task_complete_node)
         self._graph.add_node("call_model", self._call_model_node)
 
-        # 基础流程：情绪检测 -> 意图识别 -> 路由
+        # 基础流程：情绪检测 -> 意图识别 -> 意图路由
         self._graph.add_edge(START, "feeling_detect")
         self._graph.add_edge("feeling_detect", "intent_recognize")
-        self._graph.add_edge("intent_recognize", "router")
+        self._graph.add_edge("intent_recognize", "intent_router")
 
-        # 路由分支：检索或直接规划
+        # 意图路由分支：direct / plan / system
+        self._graph.add_conditional_edges(
+            "intent_router",
+            self._route_by_intent,
+            {
+                "direct": "execute_direct", 
+                "plan": "router", 
+                "system": "call_model",
+            }
+        )
+
+        # 直接执行路径
+        self._graph.add_edge("execute_direct", "call_model")
+
+        # 规划路径：路由 -> 检索或直接规划
         self._graph.add_conditional_edges(
             "router",
             self._should_retrieve,
             {"retrieve": "retrieve", "plan": "plan"}
         )
 
-        # RAG 路径：检索后直接进入规划（移除 generate 节点）
+        # RAG 路径：检索后直接进入规划
         self._graph.add_edge("retrieve", "plan")
 
         # 任务执行主路径

@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from modules.logger import log
 from modules.prompt import get_role_set_from_feeling
+from modules.context import AgentContext
 from mcp_module.context import set_value, remove_value
 
 
@@ -114,43 +115,56 @@ class Agent:
         self._feeling = feeling
         log(f"情绪状态已设置: {feeling}", "Agent")
 
-    def invoke(self, input: str, session_id: str = "default", chat_history: List = None, feeling: Dict[str, Any] = None, uid: Optional[str] = None) -> Dict[str, Any]:
+    def invoke(self, input: str, context: Optional[AgentContext] = None) -> Dict[str, Any]:
         """
         执行 Agent 处理用户输入
         
         Args:
             input: 用户输入的文本
-            session_id: 会话 ID（当前不使用，由上层 LangGraph 管理）
-            chat_history: 对话历史列表，由 LangGraph 传入
-            feeling: 情绪对象，格式: {"feeling": str, "score": int}
-            uid: 用户 ID（用于钉钉等外部工具调用）
+            context: Agent 执行上下文（包含会话信息、情绪状态等）
             
         Returns:
             包含 answer、intermediate_steps 和 tool_messages 的字典
+            
+        参考 2026 年 LangChain Context Engineering 最佳实践：
+        https://docs.langchain.com/oss/python/langchain/context-engineering
         """
-        self._feeling = feeling or {"feeling": "default", "score": 5}
-        set_value("user_id", uid)
-
+        # 使用默认上下文或传入的上下文
+        ctx = context or AgentContext()
+        
+        # 设置全局上下文变量
+        if ctx.user_id:
+            set_value("user_id", ctx.user_id)
+        
         # 获取当前日期时间，通过 invoke 注入到 prompt
         current_datetime = datetime.now()
         current_date_str = current_datetime.strftime("%Y年%m月%d日")
 
         # 构建运行时变量，注入到 prompt
-        role_set = get_role_set_from_feeling(self._feeling.get("feeling", "default"))
-        feel_score = self._feeling.get("score", 5)
+        feeling = ctx.get_feeling()
+        role_set = get_role_set_from_feeling(feeling.get("feeling", "default"))
+        feel_score = ctx.get_score()
 
         # 调用 AgentExecutor 执行
-        result = self._agent_executor.invoke({
-            "input": input,
-            "chat_history": chat_history or [],
-            "current_date": current_date_str,
-            "role_set": role_set,
-            "feelScore": feel_score
-        })
+        result = self._agent_executor.invoke(
+            {
+                "input": input,
+                "chat_history": ctx.chat_history,
+                "current_date": current_date_str,
+                "role_set": role_set,
+                "feelScore": feel_score
+            },
+            config={
+                "configurable": {
+                    "skill_name": ctx.skill_name,
+                }
+            }
+        )
 
         answer = result.get("output", str(result))
         intermediate_steps = result.get("intermediate_steps", [])
 
+        # 清理全局上下文变量
         remove_value("user_id")
 
         return {
@@ -172,7 +186,7 @@ class Agent:
             包含 content 和 tool_calls 的字典
         """
         log(f"收到消息 - Session: {session_id}, Message: {user_message}", "Agent")
-        result = self.invoke(user_message, session_id)
+        result = self.invoke(user_message, AgentContext(session_id=session_id))
         return {
             "content": result["answer"],
             "tool_calls": []

@@ -19,17 +19,14 @@ skill_run_script 工具
 【工作流程】
 1. Agent 通过 skill_instructions 获取指令："执行 scripts/process_data.py 处理数据"
 2. Agent 调用 skill_run_script(
-     skill_name="data-skill",
      script_path="scripts/process_data.py",
      args="--input data.csv --output result.json",
      timeout=60
    )
-3. 脚本在技能目录下执行：./skills/data-skill/scripts/process_data.py
+3. 脚本在当前技能目录下执行（skill_name 从上下文自动获取）
 4. 返回脚本的 stdout 输出："数据处理完成，已生成 result.json"
 
 【参数说明】
-- skill_name: 技能名称（必须）
-  - 来源：当前正在使用的技能名称
 - script_path: 脚本相对路径（必须）
   - 相对于技能目录
   - 示例："scripts/process.py"、"tools/generate.sh"
@@ -39,6 +36,8 @@ skill_run_script 工具
 - timeout: 超时时间（可选，默认 30 秒）
   - 脚本执行的最大等待时间
   - 超时后自动终止脚本
+
+注意：skill_name 从上下文自动获取，无需显式传递。
 
 【返回值】
 - 成功：脚本的 stdout 输出内容
@@ -67,12 +66,12 @@ skill_run_script 工具
 from typing import Any
 from pydantic import BaseModel, Field, PrivateAttr
 from langchain_core.tools import BaseTool
+from langchain_core.runnables import RunnableConfig
 from modules.logger import log
 from .factory import SkillToolFactory
 
 
 class SkillScriptInput(BaseModel):
-    skill_name: str = Field(description="技能名称")
     script_path: str = Field(description="脚本路径，如 scripts/process.py")
     args: str = Field(default="", description="脚本参数，空格分隔")
     timeout: int = Field(default=30, description="超时时间（秒）")
@@ -89,8 +88,20 @@ class SkillRunScriptTool(BaseTool):
         super().__init__(**data)
         self._executor = executor
     
-    def _run(self, skill_name: str, script_path: str, args: str = "", timeout: int = 30) -> str:
-        log(f"skill_run_script 被调用，skill_name={skill_name}, script={script_path}", module="Skill.Tools")
+    def _run(
+        self,
+        script_path: str,
+        args: str = "",
+        timeout: int = 30,
+        config: RunnableConfig = None,
+    ) -> str:
+        log(f"skill_run_script 被调用，script={script_path}", module="Skill.Tools")
+        
+        skill_name = config.get("configurable", {}).get("skill_name", "") if config else ""
+        
+        if not skill_name:
+            return "错误：config 中未设置技能名称，无法执行脚本。"
+        
         arg_list = args.split() if args else []
         result = self._executor.run_script(skill_name, script_path, args=arg_list, timeout=timeout)
         

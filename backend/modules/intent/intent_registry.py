@@ -33,7 +33,7 @@ class IntentRegistry:
         log("意图注册表初始化完成", module="Intent.Registry")
     
     def _register_system_intents(self):
-        """注册系统意图"""
+        """注册系统意图和聊天意图"""
         for intent_type, description in IntentConstants.SYSTEM_INTENTS.items():
             self._intents[intent_type] = {
                 "type": intent_type,
@@ -42,6 +42,16 @@ class IntentRegistry:
                 "target": "system",
                 "examples": [],
             }
+        
+        for intent_type, description in IntentConstants.CHAT_INTENTS.items():
+            self._intents[intent_type] = {
+                "type": intent_type,
+                "category": IntentCategory.CHAT,
+                "description": description,
+                "target": "chat",
+                "examples": [],
+            }
+            log(f"注册 Chat 意图: {intent_type}", module="Intent.Registry")
     
     def register_from_mcp_tools(self, mcp_tools: List[BaseTool]) -> int:
         """

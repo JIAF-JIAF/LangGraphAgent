@@ -158,9 +158,15 @@ class FeelingDetector:
         请根据以上规则分析情绪并返回相应的feeling和score，只返回JSON格式。"""
 
         try:
-            # 使用 LangChain ChatOpenAI 的 invoke 方法
             response = self.llm_client.chat.invoke(prompt)
-            result = json.loads(response.content)
+            content = response.content
+            
+            json_match = re.search(r'\{[^{}]*"feeling"[^{}]*"score"[^{}]*\}', content)
+            if json_match:
+                result = json.loads(json_match.group())
+                return result
+            
+            result = json.loads(content)
             return result
         except Exception as e:
             exception(f"LLM 情绪分析失败: {e}", "FeelingDetector", e)

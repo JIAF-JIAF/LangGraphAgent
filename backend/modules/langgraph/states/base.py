@@ -77,6 +77,8 @@ class IntentState(TypedDict):
     is_multi_intent: bool                            # 是否多意图
     current_intent_idx: int                          # 当前处理的意图索引
     current_intent: Optional[Dict[str, Any]]         # 当前意图
+    execution_mode: str                              # 执行模式: direct / plan / system
+    intent_results: List[Dict[str, Any]]             # 意图执行结果列表
 
 
 class AgentState(ContextState, RAGState, TaskState, IntentState):
@@ -106,4 +108,6 @@ def create_initial_state(
         "is_multi_intent": False,
         "current_intent_idx": 0,
         "current_intent": None,
+        "execution_mode": "plan",
+        "intent_results": [],
     }
