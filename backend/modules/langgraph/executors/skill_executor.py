@@ -7,7 +7,6 @@ Skill 意图执行器
 from typing import Dict, Any
 from modules.logger import log
 from modules.context import AgentContext
-from modules.mcp_module.context import set_value, remove_value
 from .base import BaseExecutor, ExecutionResult
 
 
@@ -59,15 +58,8 @@ class SkillExecutor(BaseExecutor):
         
         log(f"[SkillExecutor] 执行技能: {skill_name}", "Executor")
         
-        # 设置全局 skill_name，供工具调用时使用
-        set_value("skill_name", skill_name)
-        
-        try:
-            result = self._agent.invoke(content, agent_context)
-            answer = result.get("answer", "")
-        finally:
-            # 确保清理全局变量
-            remove_value("skill_name")
+        result = self._agent.invoke(content, agent_context)
+        answer = result.get("answer", "")
         
         log(f"[SkillExecutor] 技能执行完成: {answer[:50]}...", "Executor")
         

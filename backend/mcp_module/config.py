@@ -9,11 +9,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import json
+
 MCP_HOST = os.getenv("MCP_HOST")
 MCP_PORT = int(os.getenv("MCP_PORT"))
 MCP_PATH = os.getenv("MCP_PATH")
-MCP_URL = os.getenv("MCP_SERVER_URL")
-MCP_SERVERS = json.loads(os.getenv("MCP_SERVERS"))
 APP_HOST = os.getenv("SERVER_HOST")
 APP_PORT = int(os.getenv("SERVER_PORT"))
 LOG_LEVEL = os.getenv("LOG_LEVEL")
@@ -25,8 +25,6 @@ __all__ = [
     'MCP_HOST',
     'MCP_PORT',
     'MCP_PATH',
-    'MCP_URL',
-    'MCP_SERVERS',
     'APP_HOST',
     'APP_PORT',
     'LOG_LEVEL',

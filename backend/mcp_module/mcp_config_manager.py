@@ -2,12 +2,11 @@
 MCP 服务器配置管理器
 
 负责管理 MCP 服务器配置的读取、写入和更新。
-配置文件采用 JSON 格式存储，支持动态添加、删除和修改服务器配置。
+配置文件采用 YAML 格式存储，支持动态添加、删除和修改服务器配置。
 """
 
 import os
-import json
-import uuid
+import yaml
 import requests
 from datetime import datetime
 from typing import List, Dict, Optional
@@ -15,7 +14,7 @@ from typing import List, Dict, Optional
 CONFIG_FILE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
     'config',
-    'mcp_servers.json'
+    'mcp_servers.yaml'
 )
 
 
@@ -57,8 +56,8 @@ class MCPConfigManager:
         """
         try:
             with open(self.config_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, FileNotFoundError):
+                return yaml.safe_load(f) or {"servers": []}
+        except (yaml.YAMLError, FileNotFoundError):
             return {"servers": []}
     
     def _save_config(self, config: Dict):
@@ -69,7 +68,7 @@ class MCPConfigManager:
             config: 要保存的配置字典
         """
         with open(self.config_path, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
+            yaml.dump(config, f, allow_unicode=True, sort_keys=False)
     
     def get_all_servers(self) -> List[Dict]:
         """

@@ -30,6 +30,7 @@ pymilvus>=2.4.0
 
 # MCP (Model Context Protocol) 工具
 mcp>=1.0.0
+langchain-mcp-adapters>=0.2.0
 
 # 重排序模型 - 使用轻量级配置
 # torch CPU 版本会通过 Dockerfile 单独安装

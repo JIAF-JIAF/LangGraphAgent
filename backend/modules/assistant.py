@@ -21,7 +21,6 @@ from pydantic import BaseModel, Field
 from modules.logger import log
 from modules.prompt import get_role_set_from_feeling
 from modules.context import AgentContext
-from mcp_module.context import set_value, remove_value
 
 
 class DefaultToolInput(BaseModel):
@@ -132,10 +131,6 @@ class Agent:
         # 使用默认上下文或传入的上下文
         ctx = context or AgentContext()
         
-        # 设置全局上下文变量
-        if ctx.user_id:
-            set_value("user_id", ctx.user_id)
-        
         # 获取当前日期时间，通过 invoke 注入到 prompt
         current_datetime = datetime.now()
         current_date_str = current_datetime.strftime("%Y年%m月%d日")
@@ -157,15 +152,13 @@ class Agent:
             config={
                 "configurable": {
                     "skill_name": ctx.skill_name,
+                    "user_id": ctx.user_id,
                 }
             }
         )
 
         answer = result.get("output", str(result))
         intermediate_steps = result.get("intermediate_steps", [])
-
-        # 清理全局上下文变量
-        remove_value("user_id")
 
         return {
             "answer": answer,

@@ -1,178 +1,207 @@
 """
 MCP 服务模块
 
-封装 MCP 工具获取逻辑，支持从单个或多个远程 MCP 服务器获取工具。
+使用 langchain-mcp-adapters 官方库集成 MCP 工具。
+支持 Tool Interceptors 注入 user_id 等上下文信息。
 
 核心功能：
-- 从单个 MCP 服务器获取工具列表
-- 从配置的所有 MCP 服务器获取工具并合并
-- 将 MCP 工具转换为 LangChain 可调用的工具对象
+- 从配置的 MCP 服务器获取工具列表
+- 使用 Tool Interceptors 注入 user_id
+- 将 MCP 工具转换为 LangChain BaseTool
 """
 
 import asyncio
-import concurrent.futures
-from typing import List, Any, Optional, Dict
+from typing import List, Any, Optional
 
-from langchain_core.tools import StructuredTool
-from mcp.client.session import ClientSession
-from mcp.client.streamable_http import streamable_http_client
+from langchain_core.tools import BaseTool, StructuredTool
 
-import mcp_module.mcp_client as mcp_client
 import mcp_module.logger as logger
 from mcp_module.mcp_config_manager import mcp_config_manager
-from mcp_module.context import set_value, get_value, remove_value
+
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.interceptors import MCPToolCallRequest
 
 
-shared_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-
-
-def _normalize_tool_args(kwargs: Dict[str, Any]) -> Dict[str, Any]:
+def wrap_async_tool(tool: BaseTool) -> BaseTool:
     """
-    统一规范工具调用参数格式
+    将异步工具包装为支持同步调用的工具
     
-    确保传递给 MCP 服务器的参数格式统一为 {'param1': value1, 'param2': value2, ...}
+    langchain-mcp-adapters 返回的工具只实现了 _arun，
+    需要包装以支持同步调用 _run。
     
     Args:
-        kwargs: 原始参数（可能被包装在 'kwargs' 键下）
+        tool: 原始异步工具
         
     Returns:
-        标准化后的参数字典
+        支持同步调用的工具
     """
-    if not isinstance(kwargs, dict):
-        return {}
+    async def _arun(**kwargs):
+        return await tool.ainvoke(kwargs)
     
-    if len(kwargs) == 1 and 'kwargs' in kwargs:
-        args = kwargs['kwargs']
-        if isinstance(args, dict):
-            return args
-        return {}
+    def _run(**kwargs):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        
+        if loop and loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, _arun(**kwargs))
+                return future.result()
+        else:
+            return asyncio.run(_arun(**kwargs))
     
-    return kwargs
+    wrapped_tool = StructuredTool(
+        name=tool.name,
+        description=tool.description,
+        args_schema=tool.args_schema if hasattr(tool, 'args_schema') else None,
+        func=_run,
+        coroutine=_arun,
+    )
+    
+    return wrapped_tool
 
 
 class MCPToolService:
     """
     MCP 工具服务类
     
-    提供从远程 MCP 服务器获取工具的统一接口。
+    使用 langchain-mcp-adapters 连接 MCP 服务器并获取工具。
+    通过 Tool Interceptors 注入 user_id 到工具调用参数。
     """
-
-    @staticmethod
-    def get_tools(server_url: Optional[str] = None) -> List[Any]:
+    
+    _client: Any = None
+    _tools_cache: Optional[List[BaseTool]] = None
+    
+    @classmethod
+    def _build_server_configs(cls) -> dict:
         """
-        从 MCP 服务器获取工具列表（兼容旧版接口）
-        
-        Args:
-            server_url: MCP 服务器地址，若为 None 则从配置的所有启用服务器获取工具
-            
-        Returns:
-            工具列表
-        """
-        if server_url:
-            # 从指定单个服务器获取工具
-            return MCPToolService._get_tools_from_server(server_url)
-        else:
-            # 从配置的所有启用服务器获取工具
-            return MCPToolService.get_tools_from_all_servers()
-
-    @staticmethod
-    def get_tools_from_all_servers() -> List[Any]:
-        """
-        从配置中所有 MCP 服务器获取工具列表
+        从配置管理器构建服务器配置
         
         Returns:
-            合并后的工具列表（来自所有 MCP 服务器）
+            服务器配置字典，格式符合 MultiServerMCPClient 要求
         """
-        all_tools = []
-
         servers = mcp_config_manager.get_all_servers()
+        server_configs = {}
         
-        for server_config in servers:
-            server_url = server_config['url']
-            server_name = server_config.get('name', '未知服务器')
-
-            try:
-                logger.logger.info(f"连接 MCP 服务器 [{server_name}]: {server_url}")
-                tools = MCPToolService._get_tools_from_server(server_url)
-                logger.logger.info(f"从 MCP 服务器 [{server_name}] 获取到 {len(tools)} 个工具")
-                all_tools.extend(tools)
-            except Exception as e:
-                logger.logger.error(f"连接 MCP 服务器 [{server_name}] 失败: {str(e)}")
-
-        logger.logger.info(f"共获取到 {len(all_tools)} 个工具（来自 {len(servers)} 个服务器）")
-        return all_tools
-
-    @staticmethod
-    def _get_tools_from_server(server_url: str) -> List[Any]:
-        """
-        从单个 MCP 服务器获取工具列表
-        
-        Args:
-            server_url: MCP 服务器地址
+        for server in servers:
+            server_name = server.get('name', 'unknown')
+            server_url = server.get('url', '')
             
-        Returns:
-            该服务器提供的工具列表
+            if not server_url:
+                continue
+            
+            server_configs[server_name] = {
+                "transport": "http",
+                "url": server_url,
+            }
+            
+            logger.logger.info(f"配置 MCP 服务器: {server_name} -> {server_url}")
+        
+        return server_configs
+    
+    @classmethod
+    async def _inject_user_context(cls, request: MCPToolCallRequest, handler):
         """
-        mcp_tools = asyncio.run(mcp_client.get_tools_from_server(server_url))
-        return MCPToolService._create_callable_tools(mcp_tools, server_url)
-
-    @staticmethod
-    def _create_callable_tools(mcp_tools: List[Any], server_url: str) -> List[StructuredTool]:
-        """
-        将 MCP 工具转换为 LangChain 可调用的工具对象
+        Tool Interceptor: 注入 user_id 到 MCP 工具调用
+        
+        从 RunnableConfig.configurable 获取 user_id，注入到工具参数中。
         
         Args:
-            mcp_tools: MCP 工具列表
-            server_url: MCP 服务器地址
+            request: MCP 工具调用请求
+            handler: 下一个处理器
             
         Returns:
-            LangChain StructuredTool 对象列表
+            工具调用结果
         """
-        tools = []
+        runtime = request.runtime
         
-        for mcp_tool in mcp_tools:
-            name = getattr(mcp_tool, 'name', 'unknown')
-            description = getattr(mcp_tool, 'description', '').strip()
-            
-            def create_tool_call(tool_name: str = name, url: str = server_url):
-                def call_tool(**kwargs):
-                    args = _normalize_tool_args(kwargs)
-                    args["user_id"] =  get_value("user_id")
-                    
-                    async def _call():
-                        async with streamable_http_client(url) as (read_stream, write_stream, get_session_id):
-                            async with ClientSession(
-                                read_stream=read_stream,
-                                write_stream=write_stream,
-                                client_info={"name": "chartflow-client", "version": "1.0.0"}
-                            ) as session:
-                                await session.initialize()
-                                result = await session.call_tool(tool_name, args)
-                                return result
-                    
-                    try:
-                        loop = asyncio.get_running_loop()
-                    except RuntimeError:
-                        return asyncio.run(_call())
-                    else:
-                        future = shared_executor.submit(asyncio.run, _call())
-                        return future.result()
-                
-                return call_tool
-            
-            tool_func = create_tool_call()
-            tool_func.__name__ = name
-            tool_func.__doc__ = description
-            
-            tool = StructuredTool.from_function(
-                func=tool_func,
-                name=name,
-                description=description
+        user_id = ""
+        if runtime and hasattr(runtime, 'context') and runtime.context:
+            user_id = runtime.context.get("user_id", "")
+        
+        if user_id:
+            logger.logger.info(f"MCP Interceptor: 注入 user_id={user_id}")
+            modified_request = request.override(
+                args={**request.args, "user_id": user_id}
             )
-            
-            tools.append(tool)
-            
-        return tools
+            return await handler(modified_request)
+        
+        return await handler(request)
+    
+    @classmethod
+    def _init_client(cls):
+        """
+        初始化 MultiServerMCPClient
+        
+        如果已初始化则跳过。
+        """
+        if cls._client is not None:
+            return
+        
+        server_configs = cls._build_server_configs()
+        
+        if not server_configs:
+            logger.logger.warning("没有配置任何 MCP 服务器")
+            return
+        
+        try:
+            cls._client = MultiServerMCPClient(
+                server_configs,
+                tool_interceptors=[cls._inject_user_context]
+            )
+            logger.logger.info(f"MCP 客户端初始化完成，共 {len(server_configs)} 个服务器")
+        except Exception as e:
+            logger.logger.error(f"MCP 客户端初始化失败: {e}")
+            cls._client = None
+    
+    @classmethod
+    async def get_tools_async(cls) -> List[BaseTool]:
+        """
+        异步获取所有 MCP 工具
+        
+        Returns:
+            LangChain BaseTool 列表
+        """
+        if cls._tools_cache is not None:
+            return cls._tools_cache
+        
+        cls._init_client()
+        
+        if cls._client is None:
+            return []
+        
+        try:
+            tools = await cls._client.get_tools()
+            wrapped_tools = [wrap_async_tool(t) for t in tools]
+            logger.logger.info(f"获取到 {len(wrapped_tools)} 个 MCP 工具")
+            cls._tools_cache = wrapped_tools
+            return wrapped_tools
+        except Exception as e:
+            logger.logger.error(f"获取 MCP 工具失败: {type(e).__name__}: {e}")
+            return []
+    
+    @classmethod
+    def get_tools(cls) -> List[BaseTool]:
+        """
+        获取所有 MCP 工具（同步接口）
+        
+        Returns:
+            LangChain BaseTool 列表
+        """
+        return asyncio.run(cls.get_tools_async())
+    
+    @classmethod
+    def reload(cls):
+        """
+        重新加载 MCP 工具
+        
+        清除缓存，下次调用 get_tools() 时重新获取。
+        """
+        cls._tools_cache = None
+        cls._client = None
+        logger.logger.info("MCP 工具缓存已清除")
 
 
 __all__ = ['MCPToolService']
