@@ -17,7 +17,7 @@ import { useState, useCallback } from 'react';
  * });
  *
  * // 模拟 AI 回复
- * startTyping('您好！我是智能客服...', 30);
+ * startTyping('您好！我是智能助手...', 30);
  * ```
  */
 const useTypingEffect = (onComplete) => {

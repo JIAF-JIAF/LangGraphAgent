@@ -11,7 +11,7 @@ import mcp_module.config as config
 
 _server = FastMCP(
     name="ChartFlowMCP",
-    instructions="ChartFlow 智能客服 MCP 服务器",
+    instructions="智能体框架 MCP 服务器",
     host=config.MCP_HOST,
     port=config.MCP_PORT,
     streamable_http_path=config.MCP_PATH

@@ -1,5 +1,5 @@
 """
-智能客服 Agent 主应用
+智能体框架 Agent 主应用
 Flask Web 服务入口
 LangGraph 版本
 """
@@ -49,14 +49,14 @@ def create_app():
     app.extensions['assistant'] = None
 
     log("=" * 50, "App")
-    log("智能客服系统启动中... (LangGraph 版本)", "App")
+    log("智能体框架启动中... (LangGraph 版本)", "App")
     log("=" * 50, "App")
 
     assistant, _ = AssistantFactory.create_assistant()
     app.extensions['assistant'] = assistant
 
     log("=" * 50, "App")
-    log("智能客服系统就绪!", "App")
+    log("智能体框架就绪!", "App")
     log("=" * 50, "App")
     log("服务地址: http://localhost:5000", "App")
     log("API 文档:", "App")

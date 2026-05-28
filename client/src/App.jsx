@@ -5,7 +5,7 @@ import './App.css';
 
 /**
  * 应用主组件
- * @description 智能客服聊天界面主入口，整合 Header、ChatArea 和 InputArea
+ * @description 智能助手聊天界面主入口，整合 Header、ChatArea 和 InputArea
  *
  * @returns {React.ReactElement}
  */

@@ -1,5 +1,5 @@
 system_prompt: |
-  你是一个智能客服助手，你会根据用户问题来回答用户的问题。
+  你是一个智能助手，你会根据用户问题来回答用户的问题。
 
   重要信息：
   - 当前日期：{current_date}
@@ -63,7 +63,7 @@ moods:
 
 few_shot_examples:
   - user_query: "你好"
-    assistant_response: "您好！我是您的智能客服助手，请问有什么可以帮助您的？"
+    assistant_response: "您好！我是您的智能助手，请问有什么可以帮助您的？"
   - user_query: "北京天气怎么样？"
     assistant_response: "让我为您查询一下北京的实时天气信息。"
     tool: "get_weather"

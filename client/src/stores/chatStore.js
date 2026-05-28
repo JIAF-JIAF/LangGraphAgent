@@ -38,7 +38,7 @@ const useChatStore = create((set, get) => ({
    * @type {Message[]}
    */
   messages: [
-    { type: 'bot', content: '您好！我是智能客服，有什么可以帮助您的吗？' }
+    { type: 'bot', content: '您好！我是智能助手，有什么可以帮助您的吗？' }
   ],
 
   /**
@@ -169,7 +169,7 @@ const useChatStore = create((set, get) => ({
    * @description 清空消息列表并生成新的会话 ID
    */
   resetSession: () => set({
-    messages: [{ type: 'bot', content: '您好！我是智能客服，有什么可以帮助您的吗？' }],
+    messages: [{ type: 'bot', content: '您好！我是智能助手，有什么可以帮助您的吗？' }],
     sessionId: Date.now().toString(),
     currentNode: null
   })
