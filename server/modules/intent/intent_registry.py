@@ -52,6 +52,16 @@ class IntentRegistry:
                 "examples": [],
             }
             log(f"注册 Chat 意图: {intent_type}", module="Intent.Registry")
+
+        for intent_type, description in IntentConstants.PLAN_INTENTS.items():
+            self._intents[intent_type] = {
+                "type": intent_type,
+                "category": IntentCategory.PLAN,
+                "description": description,
+                "target": "plan",
+                "examples": [],
+            }
+            log(f"注册 Plan 意图: {intent_type}", module="Intent.Registry")
     
     def register_from_mcp_tools(self, mcp_tools: List[BaseTool]) -> int:
         """

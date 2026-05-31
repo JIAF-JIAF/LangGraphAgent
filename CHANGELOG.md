@@ -7,6 +7,41 @@
 
 ---
 
+## [1.7.0] - 2026-05-31
+
+### Added
+- **多 Agent 协作模块（Phase 1：Supervisor + Chat Subgraph）**
+  - `MultiAgentGraphBuilder`：构建混合架构主图，Supervisor 替代 intent_router 按意图类别细粒度分发
+  - `supervisor_node`：声明式路由表驱动，优先级由 `SUPERVISOR_ROUTE_TABLE` 定义（complex > executable > dialog）
+  - `ChatRespondNode` + `create_chat_subgraph()`：Chat 意图走独立 Subgraph，集成 RefinerRegistry
+  - Feature Flag 切换：`MULTI_AGENT_ENABLED=true` 时走新图，`false` 时走旧图，零侵入
+- **声明式路由架构（核心重构）**
+  - `classify_intents()`：意图分类函数（单一真相源），所有路由器共用
+  - `RouteRule` 数据类：条件谓词 + 目标 + 描述模板
+  - `resolve_route()`：纯函数，按路由表顺序匹配，第一个 condition 为 True 的规则命中
+  - `SUPERVISOR_ROUTE_TABLE`：新架构路由表（complex > executable > dialog → fallback chat_expert）
+  - `LEGACY_ROUTE_TABLE`：旧架构路由表（system > complex → fallback direct）
+  - 消除 4 处 if/else 硬编码，改优先级只需改路由表，路由代码零改动
+
+### Changed
+- **意图识别 Prompt 修复**
+  - 类别选项增加 "chat"，LLM 不再将 general_chat 归为 "system"
+  - content 字段强调保留用户约束条件（如"直接画，不用询问"）
+- **IntentRouterNode / route_by_intent / _route_from_supervisor 重构**
+  - 统一改用 `resolve_route()` + 对应路由表，消除重复的 if/else 路由逻辑
+  - 行为与重构前完全一致（31 场景 + 64 组合验证通过）
+- **IntentConstants 新增 category groups**
+  - `EXECUTABLE_CATEGORIES = {MCP, SKILL, RAG}`
+  - `DIALOG_CATEGORIES = {CHAT, SYSTEM}`
+  - `COMPLEX_CATEGORIES = {PLAN}`
+  - 新增类别只需加枚举 + 加 group 成员，路由表零改动
+
+### Fixed
+- Supervisor 多意图路由错误：mcp/skill 意图被 system/chat 遮蔽，导致可执行意图未执行
+- 未知 category 处理：归入 `has_complex`，走 router/plan 而非静默丢弃
+
+---
+
 ## [1.6.0] - 2026-05-30
 
 ### Added
@@ -376,5 +411,5 @@ This project is licensed under the MIT License.
 
 ---
 
-**Last Updated**: 2026-05-30  
-**Current Version**: 1.6.0
+**Last Updated**: 2026-05-31  
+**Current Version**: 1.7.0

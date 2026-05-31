@@ -7,7 +7,7 @@
 
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Set, Callable, Tuple
 
 
 class IntentCategory(Enum):
@@ -20,6 +20,7 @@ class IntentCategory(Enum):
     - RAG: 知识库检索
     - CHAT: 普通对话（闲聊、问候、感谢等）
     - SYSTEM: 系统指令（帮助、退出等）
+    - PLAN: 复杂规划（需要拆分子任务、多步骤执行的需求）
     """
     
     MCP = "mcp"
@@ -27,6 +28,7 @@ class IntentCategory(Enum):
     RAG = "rag"
     CHAT = "chat"
     SYSTEM = "system"
+    PLAN = "plan"
 
 
 @dataclass
@@ -115,9 +117,156 @@ class IntentConstants:
         "general_chat": "通用对话，处理闲聊、问候、感谢等日常对话",
     }
     
-    SIMPLE_CATEGORIES = {
-        IntentCategory.RAG, 
-        IntentCategory.SKILL, 
-        IntentCategory.MCP,
-        IntentCategory.CHAT,
+    PLAN_INTENTS = {
+        "complex_plan": "复杂规划，需要拆分子任务、多步骤执行的需求",
     }
+
+    EXECUTABLE_CATEGORIES: Set["IntentCategory"] = {
+        IntentCategory.MCP,
+        IntentCategory.SKILL,
+        IntentCategory.RAG,
+    }
+
+    DIALOG_CATEGORIES: Set["IntentCategory"] = {
+        IntentCategory.CHAT,
+        IntentCategory.SYSTEM,
+    }
+
+    COMPLEX_CATEGORIES: Set["IntentCategory"] = {
+        IntentCategory.PLAN,
+    }
+
+    SIMPLE_CATEGORIES = EXECUTABLE_CATEGORIES
+
+
+def classify_intents(intents: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    分类意图集合（单一真相源）
+
+    所有路由逻辑（Supervisor、旧 IntentRouter、edges）统一调用此函数，
+    新增类别只需修改 IntentConstants 的 category groups，无需改路由代码。
+
+    Args:
+        intents: 意图列表（来自 state["intents"]，每项为 dict 含 "category" 键）
+
+    Returns:
+        {
+            "categories": Set[IntentCategory],        # 已识别的类别集合
+            "unknown_categories": Set[str],           # 无法识别的原始 category 字符串
+            "has_complex": bool,                      # 是否有复杂意图（含未知类别）
+            "has_executable": bool,                   # 是否有可执行意图（mcp/skill/rag）
+            "has_dialog": bool,                       # 是否有对话意图（chat/system）
+        }
+    """
+    categories: Set[IntentCategory] = set()
+    unknown_categories: Set[str] = set()
+
+    for intent_data in intents:
+        category_str = intent_data.get("category", "chat")
+        try:
+            categories.add(IntentCategory(category_str))
+        except ValueError:
+            unknown_categories.add(category_str)
+
+    return {
+        "categories": categories,
+        "unknown_categories": unknown_categories,
+        "has_complex": bool(categories & IntentConstants.COMPLEX_CATEGORIES) or bool(unknown_categories),
+        "has_executable": bool(categories & IntentConstants.EXECUTABLE_CATEGORIES),
+        "has_dialog": bool(categories & IntentConstants.DIALOG_CATEGORIES),
+    }
+
+
+@dataclass(frozen=True)
+class RouteRule:
+    """
+    声明式路由规则
+
+    一条规则 = 条件谓词 + 目标 + 描述模板。
+    resolve_route 按表顺序遍历，第一个 condition 为 True 的规则命中。
+
+    Attributes:
+        condition: 输入 classify_intents 结果，返回是否命中
+        target: 命中时返回的路由目标
+        label: 日志描述模板，可用 {cat_names} / {exec_names} / {complex_names} 占位
+    """
+
+    condition: Callable[[Dict[str, Any]], bool]
+    target: str
+    label: str
+
+
+def _format_route_detail(info: Dict[str, Any], label: str) -> str:
+    """格式化路由描述，替换占位符"""
+    categories = info["categories"]
+    cat_names = ", ".join(sorted(c.value for c in categories))
+
+    exec_cats = categories & IntentConstants.EXECUTABLE_CATEGORIES
+    complex_cats = categories & IntentConstants.COMPLEX_CATEGORIES
+
+    return label.format(
+        cat_names=cat_names,
+        exec_names=", ".join(sorted(c.value for c in exec_cats)) if exec_cats else "无",
+        complex_names=", ".join(sorted(c.value for c in complex_cats)) if complex_cats else "未知",
+    )
+
+
+def resolve_route(
+    info: Dict[str, Any],
+    rules: List[RouteRule],
+    fallback: str,
+    fallback_label: str = "",
+) -> Tuple[str, str]:
+    """
+    按优先级遍历路由表，返回 (target, detail)
+
+    第一个 condition(info) 为 True 的规则命中，否则走 fallback。
+    路由优先级完全由路由表的声明顺序决定，无需 if/else。
+
+    Args:
+        info: classify_intents 的返回值
+        rules: 路由规则表（按优先级从高到低排列）
+        fallback: 无规则命中时的兜底目标
+        fallback_label: 兜底时的描述（可选）
+
+    Returns:
+        (target, detail) 元组
+    """
+    for rule in rules:
+        if rule.condition(info):
+            detail = _format_route_detail(info, rule.label)
+            return rule.target, detail
+
+    return fallback, fallback_label
+
+
+SUPERVISOR_ROUTE_TABLE: List[RouteRule] = [
+    RouteRule(
+        condition=lambda i: i["has_complex"],
+        target="router",
+        label="复杂意图: {complex_names}; 全部: {cat_names}",
+    ),
+    RouteRule(
+        condition=lambda i: i["has_executable"],
+        target="execute_direct",
+        label="可执行: {exec_names}; 全部: {cat_names}",
+    ),
+    RouteRule(
+        condition=lambda i: i["has_dialog"],
+        target="chat_expert",
+        label="对话: {cat_names}",
+    ),
+]
+
+LEGACY_ROUTE_TABLE: List[RouteRule] = [
+    RouteRule(
+        condition=lambda i: IntentCategory.SYSTEM in i["categories"],
+        target="system",
+        label="系统指令",
+    ),
+    RouteRule(
+        condition=lambda i: i["has_complex"],
+        target="plan",
+        label="复杂意图: {complex_names}",
+    ),
+]

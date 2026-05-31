@@ -21,6 +21,8 @@ from .states import AgentState
 from .executors import ExecutorRegistry
 from .refiners import RefinerRegistry
 from .graph import GraphBuilder
+from .multi_agent import is_multi_agent_enabled
+from .multi_agent.graph import MultiAgentGraphBuilder
 
 
 class LangGraphAgent:
@@ -83,20 +85,33 @@ class LangGraphAgent:
         self._build_graph()
 
     def _build_graph(self):
-        """构建状态图"""
-        builder = GraphBuilder(
-            feeling_detector=self._feeling_detector,
-            intent_router=self._intent_router,
-            rag_workflow=self._rag_workflow,
-            task_planner=self._task_planner,
-            agent=self._agent,
-            executors=self._executors,
-            refiners=self._refiners,
-        )
-
-        self._graph = builder.build()
-        self._graph = self._graph.compile(checkpointer=self._checkpointer)
-        log("LangGraph 状态图构建完成", "LangGraph")
+        """构建状态图（支持 Feature Flag 切换）"""
+        if is_multi_agent_enabled():
+            builder = MultiAgentGraphBuilder(
+                feeling_detector=self._feeling_detector,
+                intent_router=self._intent_router,
+                agent=self._agent,
+                refiners=self._refiners,
+                rag_workflow=self._rag_workflow,
+                task_planner=self._task_planner,
+                executors=self._executors,
+            )
+            self._graph = builder.build()
+            self._graph = self._graph.compile(checkpointer=self._checkpointer)
+            log("LangGraph 多 Agent 状态图构建完成（混合架构）", "LangGraph")
+        else:
+            builder = GraphBuilder(
+                feeling_detector=self._feeling_detector,
+                intent_router=self._intent_router,
+                rag_workflow=self._rag_workflow,
+                task_planner=self._task_planner,
+                agent=self._agent,
+                executors=self._executors,
+                refiners=self._refiners,
+            )
+            self._graph = builder.build()
+            self._graph = self._graph.compile(checkpointer=self._checkpointer)
+            log("LangGraph 状态图构建完成", "LangGraph")
 
     def invoke(self, query: str, session_id: str = "default", uid: Optional[str] = None) -> Dict[str, Any]:
         """

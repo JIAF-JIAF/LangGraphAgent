@@ -3,13 +3,13 @@
 
 负责：
 1. 识别用户意图（支持多意图）
-2. 根据意图类型决定执行路径
+2. 根据意图类型决定执行路径（路由优先级由 LEGACY_ROUTE_TABLE 声明式定义）
 """
 
 from typing import Dict, Any
 from langgraph.config import get_stream_writer
 from modules.logger import log
-from modules.intent import IntentCategory, IntentConstants
+from modules.intent import classify_intents, resolve_route, LEGACY_ROUTE_TABLE
 from .steps import Step
 
 
@@ -75,11 +75,13 @@ class IntentRecognizeNode:
 
 
 class IntentRouterNode:
-    """意图路由节点"""
+    """意图路由节点（路由优先级由 LEGACY_ROUTE_TABLE 声明式定义）"""
 
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
         根据意图类型决定执行路径
+
+        路由优先级由 LEGACY_ROUTE_TABLE 声明，resolve_route 按表顺序匹配。
 
         Args:
             state: 当前状态（包含 intents）
@@ -92,21 +94,9 @@ class IntentRouterNode:
 
         writer(Step.INTENT_ROUTER.started_event())
 
-        for intent_data in intents:
-            category = IntentCategory(intent_data["category"])
-            if category == IntentCategory.SYSTEM:
-                log(f"[节点: {Step.INTENT_ROUTER.step}] 检测到系统指令，走系统模式", "LangGraph")
-                writer(Step.INTENT_ROUTER.completed_event(detail="系统模式"))
-                return {"execution_mode": "system"}
+        info = classify_intents(intents)
+        target, detail = resolve_route(info, LEGACY_ROUTE_TABLE, fallback="direct", fallback_label="直接执行")
 
-        for intent_data in intents:
-            category = IntentCategory(intent_data["category"])
-            if category not in IntentConstants.SIMPLE_CATEGORIES:
-                log(f"[节点: {Step.INTENT_ROUTER.step}] 检测到复杂意图，走规划模式", "LangGraph")
-                writer(Step.INTENT_ROUTER.completed_event(detail="规划模式"))
-                return {"execution_mode": "plan"}
-
-        log(f"[节点: {Step.INTENT_ROUTER.step}] 全是简单意图，走直接执行模式", "LangGraph")
-        log(f"  意图数量: {len(intents)}", "LangGraph")
-        writer(Step.INTENT_ROUTER.completed_event(detail="直接执行"))
-        return {"execution_mode": "direct"}
+        log(f"[节点: {Step.INTENT_ROUTER.step}] 路由决策: → {target} ({detail})", "LangGraph")
+        writer(Step.INTENT_ROUTER.completed_event(detail=detail))
+        return {"execution_mode": target}

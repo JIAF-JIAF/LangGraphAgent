@@ -92,6 +92,22 @@ class IntentRecognizer:
         2. 每个意图应独立执行，按顺序返回结果
         3. 为每个意图选择最合适的意图类型和目标处理器
         4. 如果无法确定意图类型，使用 "general_chat"
+        5. content 必须保留用户原文中的约束条件，不得省略或概括
+
+        类别判断规则（category 必须从以下选项中选择）：
+        - mcp: 需要调用外部工具/服务（如天气查询、消息推送）
+        - skill: 需要执行已注册技能（如绘图、文档生成）
+        - rag: 需要检索知识库（如考试题库、政策文档）
+        - plan: 复杂需求，需要拆分子任务、多步骤执行
+        - chat: 简单对话（闲聊、问候、感谢、简单问答）
+        - system: 系统指令（帮助、退出、确认、取消）
+
+        关键区分：
+        - "帮我查天气" → mcp（直接调用工具）
+        - "帮我画个图" → skill（直接执行技能）
+        - "开发一个在线表格应用" → plan（需要拆分子任务）
+        - "设计一个微服务架构方案" → plan（需要多步骤规划）
+        - "你好" → chat（简单对话）
 
         请返回 JSON 格式（不要包含其他内容）：
         {{
@@ -99,8 +115,8 @@ class IntentRecognizer:
             "intents": [
                 {{
                     "type": "意图类型（从可用意图中选择，如 skill_drawio-skill）",
-                    "category": "意图类别（mcp/skill/rag/system）",
-                    "content": "意图具体内容",
+                    "category": "意图类别（mcp/skill/rag/plan/chat/system）",
+                    "content": "意图具体内容（保留用户原文的约束条件）",
                     "target": "目标处理器（如 skill:drawio-skill, knowledge_base:exams）",
                     "order": 执行顺序（从1开始）
                 }}

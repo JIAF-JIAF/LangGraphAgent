@@ -16,7 +16,11 @@
 - IntentRouter: 分层漏斗路由器
 """
 
-from .intent_types import Intent, IntentCategory, IntentConstants
+from .intent_types import (
+    Intent, IntentCategory, IntentConstants,
+    classify_intents, RouteRule, resolve_route,
+    SUPERVISOR_ROUTE_TABLE, LEGACY_ROUTE_TABLE,
+)
 from .intent_registry import IntentRegistry
 from .recognizer import IntentRecognizer
 from .router import IntentRouter
@@ -25,6 +29,11 @@ __all__ = [
     "Intent",
     "IntentCategory",
     "IntentConstants",
+    "classify_intents",
+    "RouteRule",
+    "resolve_route",
+    "SUPERVISOR_ROUTE_TABLE",
+    "LEGACY_ROUTE_TABLE",
     "IntentRegistry",
     "IntentRecognizer",
     "IntentRouter",
