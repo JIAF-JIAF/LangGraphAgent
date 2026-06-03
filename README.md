@@ -38,7 +38,14 @@ LangGraphAgent/
 │   │   │   ├── refiners/        # 结果精炼器
 │   │   │   ├── planner/         # 任务规划器
 │   │   │   ├── reflection/      # 反思校验器
-│   │   │   └── task_generators/ # 任务生成器（责任链模式）
+│   │   │   ├── task_generators/ # 任务生成器（责任链模式）
+│   │   │   └── multi_agent/     # 多 Agent 协作模块（Phase 2 专家架构）
+│   │   │       ├── graph.py     # 多 Agent 主图构建器
+│   │   │       ├── states.py    # MultiAgentState（自定义 reducer）
+│   │   │       ├── expert_agent_factory.py # 领域专精 Agent 工厂
+│   │   │       ├── nodes/       # Supervisor + Merge 节点
+│   │   │       ├── subgraphs/   # Expert Subgraph（MCP/Skill/RAG/Planner/Chat）
+│   │   │       └── tools/       # 工具封装（MCP/Skill/RAG/Planner）
 │   │   ├── intent/              # 意图识别模块（2026-05 新增）
 │   │   │   ├── intent_types.py  # 意图类型定义
 │   │   │   ├── intent_registry.py # 意图注册表（动态注册）
@@ -114,6 +121,57 @@ LangGraphAgent/
 4. **工作流编排**: 支持多节点路由、条件分支、循环等复杂工作流
 
 ### 完整节点流程
+
+#### Phase 2 专家架构（当前）
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Feeling as feeling_detect
+    participant Intent as intent_recognize
+    participant Supervisor as supervisor
+    participant MCP as mcp_expert
+    participant Skill as skill_expert
+    participant RAG as rag_expert
+    participant Planner as planner_expert
+    participant Chat as chat_expert
+    participant Merge as merge
+
+    User->>Feeling: query
+    Feeling->>Intent: feeling
+    Intent->>Supervisor: intents
+    Supervisor->>Supervisor: 重置 agent_results
+
+    alt 单一 MCP 意图
+        Supervisor->>MCP: Send / 直接路由
+        MCP->>Merge: agent_results
+    else 单一 Skill 意图
+        Supervisor->>Skill: Send / 直接路由
+        Skill->>Merge: agent_results
+    else 单一 RAG 意图
+        Supervisor->>RAG: Send / 直接路由
+        RAG->>Merge: agent_results
+    else PLAN 意图
+        Supervisor->>Planner: 直接路由
+        Planner->>Planner: decompose → delegate → summarize
+        Planner->>Merge: agent_results
+    else 混合可执行意图
+        Supervisor->>MCP: Send（并行）
+        Supervisor->>Skill: Send（并行）
+        Supervisor->>RAG: Send（并行）
+        MCP->>Merge: agent_results
+        Skill->>Merge: agent_results
+        RAG->>Merge: agent_results
+    else 对话意图
+        Supervisor->>Chat: 直接路由
+        Chat->>Merge: agent_results
+    end
+
+    Merge->>Merge: 合并结果 + LLM 润色
+    Merge-->>User: 最终回答
+```
+
+#### Phase 1 旧架构（保留兼容）
 
 ```mermaid
 sequenceDiagram
@@ -350,6 +408,73 @@ writer(Step.FEELING_DETECT.completed_event(detail="积极 (8)"))
 | `EXECUTE_TASK`       | `execute_task`     | 执行任务   | ⚙️  |
 | `CHECK_TASK`         | `check_task_complete` | 检查任务 | ✅  |
 | `CALL_MODEL`         | `call_model`       | 生成回答   | 🤖  |
+
+### Phase 2 专家架构
+
+Phase 2 引入领域专精 Expert Subgraph，每个 Expert 只绑定自己领域的工具，从根源杜绝工具幻觉。
+
+#### 核心设计原则
+
+1. **工具隔离**：每个 Expert Agent 只看到自己领域的工具（MCP Expert 只看 MCP 工具，Skill Expert 只看 Skill 工具）
+2. **LLM-in-the-loop**：参数提取由 LLM 完成，不手动拼装参数
+3. **无 fallback**：Agent 只能调用自己领域的工具，失败则明确报告
+4. **意图即上下文**：将意图信息作为 Agent 输入的上下文提示，避免其他类别意图污染
+
+#### Expert 节点说明
+
+| Expert | 类别 | 工具集 | 说明 |
+| ------ | ---- | ------ | ---- |
+| `mcp_expert` | MCP | MCPToolService 动态工具 + mcp_execute 兜底 | ReAct 循环选工具→提参→执行 |
+| `skill_expert` | Skill | SkillManager 动态工具 + skill_execute 兜底 | ReAct 循环选技能→提参→执行 |
+| `rag_expert` | RAG | knowledge_search + knowledge_generate | ReAct 循环选知识库→检索→生成 |
+| `planner_expert` | Plan | decompose_task + delegate_to_* + summarize_results | 分解→委托→汇总 |
+| `chat_expert` | Chat | 无工具（使用 RefinerRegistry 润色） | 与旧 CallModelNode 行为一致 |
+
+#### 路由策略
+
+Supervisor 通过 `SUPERVISOR_ROUTE_TABLE` 声明式路由，优先级：
+
+1. 无意图 → `chat_expert`
+2. PLAN 意图 → `planner_expert`（通过委托工具编排跨领域子任务）
+3. 纯单类别意图 → 对应 Expert
+4. 混合可执行意图 → Send API 并行分发到多个 Expert
+5. 对话意图 → `chat_expert`
+
+#### 并行执行
+
+混合意图场景下，Supervisor 使用 LangGraph Send API 将意图按类别分组，并行分发到多个 Expert：
+
+```
+用户输入: "查杭州天气，画架构图"
+        │
+        ▼
+intent_recognize → [mcp:weather, skill:drawio]
+        │
+        ▼
+supervisor → classify_intents → 混合可执行意图
+        │
+        ├── Send(mcp_expert, {intents: [mcp:weather]})
+        └── Send(skill_expert, {intents: [skill:drawio]})
+              │                    │
+              ▼                    ▼
+        mcp_expert           skill_expert
+        (并行执行)            (并行执行)
+              │                    │
+              └────────┬───────────┘
+                       ▼
+                    merge → LLM 润色 → 最终回答
+```
+
+#### Feature Flag
+
+| 环境变量 | 说明 | 默认值 |
+| -------- | ---- | ------ |
+| `MULTI_AGENT_ENABLED` | 多 Agent 模式总开关 | false |
+| `MULTI_AGENT_MCP_EXPERT_ENABLED` | MCP Expert 开关 | true |
+| `MULTI_AGENT_SKILL_EXPERT_ENABLED` | Skill Expert 开关 | true |
+| `MULTI_AGENT_RAG_EXPERT_ENABLED` | RAG Expert 开关 | true |
+| `MULTI_AGENT_PLANNER_EXPERT_ENABLED` | Planner Expert 开关 | true |
+| `MULTI_AGENT_PARALLEL_ENABLED` | 并行执行开关 | false |
 
 ## 模块化 RAG 框架
 

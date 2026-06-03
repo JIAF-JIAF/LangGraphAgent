@@ -16,7 +16,6 @@ from modules.rate_limit import RateLimiter
 from modules.sse import SSEEventProcessor, format_sse_event
 from modules.sse.events import EventType
 from modules.logger import log, exception
-from modules.context import AgentContext
 
 if sys.stdout.encoding != 'utf-8':
     import codecs
@@ -97,7 +96,7 @@ def create_app():
             log("用户: {}".format(user_message), "App")
 
             assistant = app.extensions['assistant']
-            result = assistant.invoke(user_message, AgentContext(session_id=session_id))
+            result = assistant.invoke(user_message, session_id)
 
             response = {
                 "reply": result.get("answer", ""),

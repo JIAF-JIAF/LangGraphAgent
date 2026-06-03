@@ -19,7 +19,7 @@
 from .intent_types import (
     Intent, IntentCategory, IntentConstants,
     classify_intents, RouteRule, resolve_route,
-    SUPERVISOR_ROUTE_TABLE, LEGACY_ROUTE_TABLE,
+    SUPERVISOR_ROUTE_TABLE, EXPERT_ROUTE_TABLE, LEGACY_ROUTE_TABLE,
 )
 from .intent_registry import IntentRegistry
 from .recognizer import IntentRecognizer
@@ -33,6 +33,7 @@ __all__ = [
     "RouteRule",
     "resolve_route",
     "SUPERVISOR_ROUTE_TABLE",
+    "EXPERT_ROUTE_TABLE",
     "LEGACY_ROUTE_TABLE",
     "IntentRegistry",
     "IntentRecognizer",

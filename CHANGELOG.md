@@ -7,6 +7,62 @@
 
 ---
 
+## [1.8.0] - 2026-06-03
+
+### Added
+- **多 Agent 协作模块（Phase 2：专业 Subgraph 集成 / 专家架构）**
+  - `ExpertAgentFactory`：领域专精 Agent 工厂，为每个 Expert 创建独立 Agent（只绑定领域工具，从根源杜绝工具幻觉）
+  - `MCPExpertNode`：MCP Expert Subgraph，ReAct 循环自动完成参数提取和工具选择
+  - `SkillExpertNode`：Skill Expert Subgraph，ReAct 循环自动完成技能选择和参数提取
+  - `RAGExpertNode`：RAG Expert Subgraph，ReAct 循环自动完成知识库选择、检索和答案生成
+  - `PlannerExpertNode`：Planner Expert Subgraph，通过委托工具（delegate_to_*）编排跨领域子任务
+  - `ChatExpertNode`：Chat Expert Subgraph，集成 RefinerRegistry 润色，与旧 CallModelNode 行为一致
+  - `BaseExpertNode`：Expert 基类，仅提供 `_build_input` 公共逻辑，子类继承后保持各自实现
+  - `MergeNode`：Merge 节点，合并所有 Expert 结果，使用纯 LLM（无工具）润色生成最终回答
+  - `supervisor_node`：Supervisor 路由节点，负责流式事件推送和 agent_results 重置
+  - Send API 并行分发：混合可执行意图按类别分组，并行发送到多个 Expert
+  - `_route_from_supervisor`：声明式条件路由函数，支持单目标路由和并行 Send 分发
+  - `_build_parallel_sends`：构建并行 Send 列表，每个 Expert 只接收属于自己类别的意图
+  - `_create_disabled_expert_node`：未启用 Expert 的空节点（确保 Send API 路由目标存在）
+- **状态管理增强**
+  - `add_agent_results` 自定义 reducer：支持并行 Expert 追加 + Supervisor 重置（None → 清空）
+  - `keep_last` reducer：并行安全，取最后一个值
+  - Supervisor 每轮返回 `{"agent_results": None}` 重置，避免跨请求累积
+- **工具封装**
+  - `create_planner_tools()`：含委托工具（delegate_to_mcp/skill/rag_expert），Planner 通过委托工具跨领域编排
+  - `create_rag_tools()`：knowledge_search + knowledge_generate
+  - `get_mcp_tools()` / `mcp_execute`：MCP 动态工具透传 + 兜底工具
+  - `get_skill_tools()` / `skill_execute`：Skill 动态工具透传 + 兜底工具
+- **Feature Flag 细粒度控制**
+  - `MULTI_AGENT_MCP_EXPERT_ENABLED`：MCP Expert 开关
+  - `MULTI_AGENT_SKILL_EXPERT_ENABLED`：Skill Expert 开关
+  - `MULTI_AGENT_RAG_EXPERT_ENABLED`：RAG Expert 开关
+  - `MULTI_AGENT_PLANNER_EXPERT_ENABLED`：Planner Expert 开关
+  - 默认全部开启
+- **Step 枚举扩展**
+  - 新增 SUPERVISOR、RAG_EXPERT、SKILL_EXPERT、MCP_EXPERT、CHAT_EXPERT、PLANNER_EXPERT
+
+### Changed
+- **MultiAgentState 字段更新**
+  - `agent_results` 从 `operator.add` 改为 `add_agent_results` 自定义 reducer
+  - 所有字段添加 `keep_last` reducer，解决 Send API 并行写入冲突
+- **supervisor_node 职责简化**
+  - 只负责流式事件推送和 agent_results 重置
+  - 路由日志统一由 `_route_from_supervisor` 输出，消除重复日志
+- **summarize_results 兼容性增强**
+  - 支持 LLM 传入 `{task_id: {...}}` 字典或 `[{...}]` 列表格式，统一转为列表
+- **方法注释规范化**
+  - 所有 Phase 2 改动代码的方法添加 Args/Returns 注释（参考 feeling.py 格式）
+
+### Fixed
+- **agent_results 跨请求累积**：自定义 reducer + Supervisor 重置，避免 Checkpointer 恢复历史状态导致残留
+- **Supervisor 路由日志重复**：supervisor_node 和 _route_from_supervisor 各打一次日志，统一为后者
+- **summarize_results TypeError**：LLM 传入字典格式导致 `string indices must be integers` 错误，增加格式自适应
+- **Send API "Ignoring unknown node name"**：未启用的 Expert 注册空节点，确保路由目标存在
+- **并行状态冲突**：Send API 并行执行时多个节点写入同一 state key 报错，添加 keep_last reducer
+
+---
+
 ## [1.7.0] - 2026-05-31
 
 ### Added
@@ -411,5 +467,5 @@ This project is licensed under the MIT License.
 
 ---
 
-**Last Updated**: 2026-05-31  
-**Current Version**: 1.7.0
+**Last Updated**: 2026-06-03  
+**Current Version**: 1.8.0

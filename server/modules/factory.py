@@ -45,7 +45,7 @@ class AssistantFactory:
         log("RAG 工作流初始化完成", "Factory")
 
         log("初始化 LangChain Agent（含技能工具）...", "Factory")
-        langchain_agent = AssistantFactory._try_init_langchain_agent(ai_client)
+        langchain_agent, skill_manager = AssistantFactory._try_init_langchain_agent(ai_client)
         log("LangChain Agent 初始化完成", "Factory")
 
         log("初始化 LangGraph 调度层...", "Factory")
@@ -61,6 +61,8 @@ class AssistantFactory:
             task_planner=task_planner,
             intent_router=intent_router,
             verbose=True,
+            ai_client=ai_client,
+            skill_manager=skill_manager,
         )
         log("LangGraph 调度层初始化完成", "Factory")
 
@@ -100,14 +102,17 @@ class AssistantFactory:
             tool_manager = ToolManager(llm_client=ai_client)
             all_tools = tool_manager.get_all_tools()
 
+            # 获取 SkillManager 实例（ExpertAgentFactory 需要）
+            skill_manager = tool_manager._skill_manager
+
             return LangChainAgent(options={
                 "prompt": create_prompt(feeling={"feeling": "default", "score": 5}),
                 "tools": all_tools,
                 "aiClient": ai_client
-            })
+            }), skill_manager
         except Exception as e:
             log("LangChain Agent 初始化失败: {}".format(e), "Factory")
-            return None
+            return None, None
 
     @staticmethod
     def _init_langgraph_components(ai_client):

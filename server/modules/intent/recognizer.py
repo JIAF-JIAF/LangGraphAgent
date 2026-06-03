@@ -93,6 +93,8 @@ class IntentRecognizer:
         3. 为每个意图选择最合适的意图类型和目标处理器
         4. 如果无法确定意图类型，使用 "general_chat"
         5. content 必须保留用户原文中的约束条件，不得省略或概括
+        6. 问候语（如"你好"、"嗨"）只是语气修饰，不是独立意图，不要拆分为 general_chat
+           例如："你好呀，帮我查天气" → 只识别为 mcp_get_weather，不要额外拆出 general_chat
 
         类别判断规则（category 必须从以下选项中选择）：
         - mcp: 需要调用外部工具/服务（如天气查询、消息推送）

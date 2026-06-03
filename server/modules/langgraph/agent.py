@@ -51,6 +51,8 @@ class LangGraphAgent:
         task_planner: Any,
         intent_router: Any = None,
         verbose: bool = True,
+        ai_client: Any = None,
+        skill_manager: Any = None,
     ):
         """
         初始化 LangGraph Agent
@@ -63,6 +65,8 @@ class LangGraphAgent:
             task_planner: 任务规划器实例（可替换），需实现 plan(query, context) 方法
             intent_router: 意图路由器实例（可替换），需实现 route(query) 方法
             verbose: 是否输出详细日志
+            ai_client: AI 客户端实例（用于 ExpertAgentFactory 创建领域专精 Agent）
+            skill_manager: 技能管理器实例（用于 ExpertAgentFactory 获取技能工具）
         """
         self._agent = agent
         self._rag_workflow = rag_workflow
@@ -71,6 +75,8 @@ class LangGraphAgent:
         self._task_planner = task_planner
         self._intent_router = intent_router
         self._verbose = verbose
+        self._ai_client = ai_client
+        self._skill_manager = skill_manager
         self._graph = None
         
         # 构建精炼器（用于最终回答的润色处理）
@@ -95,6 +101,8 @@ class LangGraphAgent:
                 rag_workflow=self._rag_workflow,
                 task_planner=self._task_planner,
                 executors=self._executors,
+                ai_client=self._ai_client,
+                skill_manager=self._skill_manager,
             )
             self._graph = builder.build()
             self._graph = self._graph.compile(checkpointer=self._checkpointer)
@@ -117,6 +125,11 @@ class LangGraphAgent:
         """
         执行 Agent（LangGraph 1.0+ 官方标准调用方式）
         无论是否有历史，永远只传增量！
+
+        Args:
+            query: 用户查询
+            session_id: 会话 ID
+            uid: 用户 ID
         """
         log(f"=== 开始处理请求 ===", "LangGraph")
         log(f"会话ID: {session_id}", "LangGraph")
