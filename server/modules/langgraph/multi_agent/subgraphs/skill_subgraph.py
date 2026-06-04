@@ -39,6 +39,25 @@ class SkillExpertNode(BaseExpertNode):
         """
         self._agent = agent
 
+    def _extract_skill_name(self, skill_intents: List[Dict[str, Any]]) -> str:
+        """
+        从意图列表中提取技能名称
+
+        target 格式固定为 "skill:{skill_name}"，如 "skill:drawio-skill"
+
+        Args:
+            skill_intents: Skill 意图列表
+
+        Returns:
+            技能名称，如 "drawio-skill"，空字符串表示未提取到
+        """
+        if not skill_intents:
+            return ""
+        target = skill_intents[0].get("target", "")
+        if target.startswith(self.target_prefix):
+            return target[len(self.target_prefix):]
+        return ""
+
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
         执行技能调用
@@ -59,10 +78,13 @@ class SkillExpertNode(BaseExpertNode):
         writer(Step.SKILL_EXPERT.started_event())
         log(f"[SkillExpert] 处理 Skill 意图: {len(skill_intents)} 个, 输入: {input_text[:50]}...", "MultiAgent")
 
+        skill_name = self._extract_skill_name(skill_intents)
+
         agent_context = AgentContext(
             session_id=state.get("session_id", "default"),
             chat_history=state.get("chat_history", []),
             feeling=state.get("feeling", {}),
+            skill_name=skill_name,
         )
 
         result = self._agent.invoke(input_text, agent_context)

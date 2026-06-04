@@ -95,7 +95,9 @@ class SkillSaveFileTool(BaseTool):
         output_dir = skill_dir / "output"
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        target_path = output_dir / file_path
+        # 去掉多余的 output/ 前缀（Agent 可能误传）
+        clean_path = file_path.lstrip("output/").lstrip("output\\")
+        target_path = output_dir / clean_path
         target_path.parent.mkdir(parents=True, exist_ok=True)
         
         try:

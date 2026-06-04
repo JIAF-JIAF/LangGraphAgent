@@ -22,10 +22,18 @@ Planner 工具封装
 
 import json
 from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, Field
 from langchain_core.tools import tool
 from modules.langgraph.planner.task_planner import TaskPlanner
 from modules.context import AgentContext
 from modules.logger import log
+
+
+class SubTaskResult(BaseModel):
+    """子任务结果结构（Pydantic 约束，引导 LLM 传入列表格式而非字典）"""
+    task_description: str = Field(description="子任务描述")
+    result: str = Field(description="子任务执行结果")
+    status: str = Field(default="completed", description="任务状态：completed 或 failed")
 
 
 def create_planner_tools(
@@ -103,27 +111,18 @@ def create_planner_tools(
         return result.get("answer", "执行失败")
 
     @tool
-    def summarize_results(query: str, results: str) -> str:
+    def summarize_results(query: str, results: List[SubTaskResult]) -> str:
         """将多个子任务的结果汇总为最终回答。当所有子任务完成后使用。
 
         Args:
             query: 原始用户问题
-            results: 各子任务的执行结果（JSON 格式）
+            results: 各子任务的执行结果列表（必须是列表，每个元素包含 task_description、result、status）
         """
         log("[PlannerTool] 汇总结果", "MultiAgent")
-        try:
-            parsed = json.loads(results) if isinstance(results, str) else results
-        except json.JSONDecodeError:
-            subtasks = [{"task_description": query, "result": results, "status": "completed"}]
-        else:
-            # LLM 可能传入 {task_id: {...}} 字典或 [{...}] 列表，统一转为列表
-            if isinstance(parsed, dict):
-                subtasks = list(parsed.values())
-            else:
-                subtasks = parsed
+        subtasks = [r.model_dump() for r in results]
 
         summary = task_planner.get_summary(subtasks)
-        return summary if summary else str(results)
+        return summary if summary else str(subtasks)
 
     tools = [
         decompose_task, 

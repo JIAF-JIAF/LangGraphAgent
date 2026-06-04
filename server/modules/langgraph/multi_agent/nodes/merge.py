@@ -70,6 +70,7 @@ class MergeNode:
         Returns:
             更新后的状态（包含 answer、intent_results、chat_history）
         """
+        writer = get_stream_writer()
         query = state["query"]
         agent_results = state.get("agent_results", [])
 
