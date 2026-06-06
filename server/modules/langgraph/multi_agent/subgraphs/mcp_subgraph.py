@@ -90,9 +90,12 @@ class MCPExpertNode(BaseExpertNode):
         writer(Step.MCP_EXPERT.completed_event())
         log(f"[MCPExpert] 完成: {answer[:50]}...", "MultiAgent")
 
-        return {
-            "agent_results": [{"agent": "mcp_expert", "answer": answer, "intent_results": intent_results}],
-        }
+        return self._build_result(
+            state, 
+            "mcp_expert", 
+            answer, 
+            intent_results
+        )
 
 
 def create_mcp_expert(agent):

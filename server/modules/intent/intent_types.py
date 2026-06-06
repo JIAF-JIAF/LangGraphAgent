@@ -13,22 +13,22 @@ from typing import Dict, Any, Optional, List, Set, Callable, Tuple
 class IntentCategory(Enum):
     """
     意图类别枚举
-    
+
     意图分为以下类别：
     - MCP: MCP 工具调用
     - SKILL: 技能执行
     - RAG: 知识库检索
-    - CHAT: 普通对话（闲聊、问候、感谢等）
+    - CHAT: 简单对话（闲聊、问候、感谢、简单问答等，LLM 直接回答即可）
     - SYSTEM: 系统指令（帮助、退出等）
-    - PLAN: 复杂规划（需要拆分子任务、多步骤执行的需求）
+    - COMPLEX_PLAN: 复杂规划（需要拆分子任务、多步骤执行的需求，如创建应用、设计方案）
     """
-    
+
     MCP = "mcp"
     SKILL = "skill"
     RAG = "rag"
     CHAT = "chat"
     SYSTEM = "system"
-    PLAN = "plan"
+    COMPLEX_PLAN = "complex_plan"
 
 
 @dataclass
@@ -118,7 +118,7 @@ class IntentConstants:
     }
     
     PLAN_INTENTS = {
-        "complex_plan": "复杂规划，需要拆分子任务、多步骤执行的需求",
+        "complex_plan": "复杂规划，需要拆分子任务、多步骤执行的需求（如创建应用、设计方案）",
     }
 
     EXECUTABLE_CATEGORIES: Set["IntentCategory"] = {
@@ -133,7 +133,7 @@ class IntentConstants:
     }
 
     COMPLEX_CATEGORIES: Set["IntentCategory"] = {
-        IntentCategory.PLAN,
+        IntentCategory.COMPLEX_PLAN,
     }
 
     SIMPLE_CATEGORIES = EXECUTABLE_CATEGORIES
@@ -242,9 +242,9 @@ def resolve_route(
 
 SUPERVISOR_ROUTE_TABLE: List[RouteRule] = [
     RouteRule(
-        condition=lambda i: IntentCategory.PLAN in i["categories"],
+        condition=lambda i: IntentCategory.COMPLEX_PLAN in i["categories"],
         target="planner_expert",
-        label="规划意图 → planner_expert",
+        label="复杂规划意图 → planner_expert",
     ),
     RouteRule(
         condition=lambda i: i["has_complex"],
@@ -280,9 +280,9 @@ SUPERVISOR_ROUTE_TABLE: List[RouteRule] = [
 
 EXPERT_ROUTE_TABLE: List[RouteRule] = [
     RouteRule(
-        condition=lambda i: IntentCategory.PLAN in i["categories"],
+        condition=lambda i: IntentCategory.COMPLEX_PLAN in i["categories"],
         target="planner_expert",
-        label="规划意图 → planner_expert",
+        label="复杂规划意图 → planner_expert",
     ),
     RouteRule(
         condition=lambda i: _is_single_category(i, IntentCategory.MCP),
@@ -332,16 +332,3 @@ def _is_single_category(info: Dict[str, Any], category: IntentCategory) -> bool:
     categories = info["categories"]
     executable_cats = categories & IntentConstants.EXECUTABLE_CATEGORIES
     return bool(executable_cats) and executable_cats == {category}
-
-LEGACY_ROUTE_TABLE: List[RouteRule] = [
-    RouteRule(
-        condition=lambda i: IntentCategory.SYSTEM in i["categories"],
-        target="system",
-        label="系统指令",
-    ),
-    RouteRule(
-        condition=lambda i: i["has_complex"],
-        target="plan",
-        label="复杂意图: {complex_names}",
-    ),
-]

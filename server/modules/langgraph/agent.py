@@ -6,22 +6,17 @@ LangGraph Agent - 主入口
 - 编译状态图
 - 提供统一调用接口
 
-架构设计：
-- agent.py：只负责流程编排（不再包含节点定义）
-- nodes/：节点定义模块（单一职责）
-- edges.py：条件路由函数
-- graph.py：图构建器
-- context_builder.py：上下文构建
-- task_generators/：任务生成策略
+架构设计（多 Agent 架构）：
+- agent.py：主入口，负责组件初始化和图编译
+- nodes/：前置节点（feeling_detect, intent_recognize）
+- multi_agent/：多 Agent 协作模块（Supervisor, Expert, Planner, Merge）
+- refiners/：润色器（Chat Expert 的 Supervisor 直接调度路径使用）
 """
 
 from typing import Optional, Dict, Any
 from modules.logger import log
 from .states import AgentState
-from .executors import ExecutorRegistry
 from .refiners import RefinerRegistry
-from .graph import GraphBuilder
-from .multi_agent import is_multi_agent_enabled
 from .multi_agent.graph import MultiAgentGraphBuilder
 
 
@@ -79,47 +74,27 @@ class LangGraphAgent:
         self._skill_manager = skill_manager
         self._graph = None
         
-        # 构建精炼器（用于最终回答的润色处理）
+        # 构建精炼器（用于 Chat Expert 的 Supervisor 直接调度路径润色）
         self._refiners = RefinerRegistry.build_all()
-        # 构建执行器（用于各类意图的直接执行）
-        self._executors = ExecutorRegistry.build_all(
-            rag_workflow=rag_workflow,
-            agent=agent,
-        )
 
         # 构建图
         self._build_graph()
 
     def _build_graph(self):
-        """构建状态图（支持 Feature Flag 切换）"""
-        if is_multi_agent_enabled():
-            builder = MultiAgentGraphBuilder(
-                feeling_detector=self._feeling_detector,
-                intent_router=self._intent_router,
-                agent=self._agent,
-                refiners=self._refiners,
-                rag_workflow=self._rag_workflow,
-                task_planner=self._task_planner,
-                executors=self._executors,
-                ai_client=self._ai_client,
-                skill_manager=self._skill_manager,
-            )
-            self._graph = builder.build()
-            self._graph = self._graph.compile(checkpointer=self._checkpointer)
-            log("LangGraph 多 Agent 状态图构建完成（混合架构）", "LangGraph")
-        else:
-            builder = GraphBuilder(
-                feeling_detector=self._feeling_detector,
-                intent_router=self._intent_router,
-                rag_workflow=self._rag_workflow,
-                task_planner=self._task_planner,
-                agent=self._agent,
-                executors=self._executors,
-                refiners=self._refiners,
-            )
-            self._graph = builder.build()
-            self._graph = self._graph.compile(checkpointer=self._checkpointer)
-            log("LangGraph 状态图构建完成", "LangGraph")
+        """构建多 Agent 状态图"""
+        builder = MultiAgentGraphBuilder(
+            feeling_detector=self._feeling_detector,
+            intent_router=self._intent_router,
+            agent=self._agent,
+            refiners=self._refiners,
+            rag_workflow=self._rag_workflow,
+            task_planner=self._task_planner,
+            ai_client=self._ai_client,
+            skill_manager=self._skill_manager,
+        )
+        self._graph = builder.build()
+        self._graph = self._graph.compile(checkpointer=self._checkpointer)
+        log("LangGraph 多 Agent 状态图构建完成", "LangGraph")
 
     def invoke(self, query: str, session_id: str = "default", uid: Optional[str] = None) -> Dict[str, Any]:
         """

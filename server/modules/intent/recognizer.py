@@ -60,7 +60,7 @@ class IntentRecognizer:
             log(f"识别到 {len(intents)} 个意图", module="Intent.Recognizer")
             for intent in intents:
                 content_preview = intent.content[:30] if len(intent.content) > 30 else intent.content
-                log(f"  [{intent.order}] {intent.type}: {content_preview}...", module="Intent.Recognizer")
+                log(f"  [{intent.order}] {intent.type} (category={intent.category.value}): {content_preview}...", module="Intent.Recognizer")
             
             return intents
             
@@ -100,16 +100,33 @@ class IntentRecognizer:
         - mcp: 需要调用外部工具/服务（如天气查询、消息推送）
         - skill: 需要执行已注册技能（如绘图、文档生成）
         - rag: 需要检索知识库（如考试题库、政策文档）
-        - plan: 复杂需求，需要拆分子任务、多步骤执行
-        - chat: 简单对话（闲聊、问候、感谢、简单问答）
+        - complex_plan: 复杂需求，需要拆分子任务、多步骤执行（如创建应用、设计方案、开发系统）
+        - chat: 简单对话（闲聊、问候、感谢、简单问答，LLM 直接回答即可）
         - system: 系统指令（帮助、退出、确认、取消）
 
         关键区分：
         - "帮我查天气" → mcp（直接调用工具）
         - "帮我画个图" → skill（直接执行技能）
-        - "开发一个在线表格应用" → plan（需要拆分子任务）
-        - "设计一个微服务架构方案" → plan（需要多步骤规划）
+        - "开发一个在线表格应用" → complex_plan（需要拆分子任务，多步骤执行）
+        - "设计一个微服务架构方案" → complex_plan（需要多步骤规划）
+        - "杭州天气怎么样，适合去哪玩" → 两个意图：mcp(查天气) + complex_plan(推荐游玩，依赖天气结果)
         - "你好" → chat（简单对话）
+        - "什么是量子力学" → chat（简单问答，LLM 直接回答）
+        - "帮我写一首诗" → chat（简单创作，LLM 直接回答）
+
+        complex_plan vs chat 的核心区分：
+        - complex_plan：需要多步骤执行，涉及创建/开发/设计/构建等动作，无法一步完成
+        - chat：LLM 可以直接回答的问题，包括闲聊、问答、简单创作
+
+        ⚠️ 重要：以下关键词出现时，必须归类为 complex_plan，不要归类为 chat：
+        - 创建 + 应用/系统/项目/工具/平台/网站
+        - 开发 + 应用/系统/项目/工具/平台/网站
+        - 设计 + 方案/架构/系统/流程
+        - 构建 + 应用/系统/项目
+        - 实现 + 功能/系统/应用
+        - 搭建 + 环境/系统/平台
+        例如："创建在线表格应用" → complex_plan（创建应用，需要多步骤实现）
+        例如："开发一个管理系统" → complex_plan（开发系统，需要多步骤实现）
 
         请返回 JSON 格式（不要包含其他内容）：
         {{
@@ -117,7 +134,7 @@ class IntentRecognizer:
             "intents": [
                 {{
                     "type": "意图类型（从可用意图中选择，如 skill_drawio-skill）",
-                    "category": "意图类别（mcp/skill/rag/plan/chat/system）",
+                    "category": "意图类别（mcp/skill/rag/complex_plan/chat/system）",
                     "content": "意图具体内容（保留用户原文的约束条件）",
                     "target": "目标处理器（如 skill:drawio-skill, knowledge_base:exams）",
                     "order": 执行顺序（从1开始）
@@ -155,11 +172,17 @@ class IntentRecognizer:
                     category = IntentCategory(category_str)
                 except ValueError:
                     category = IntentCategory.SYSTEM
-                
+
+                # 后处理：chat → complex_plan 修正
+                # LLM 可能将"创建应用"等误判为 chat，通过关键词二次校验
+                content = item.get("content", query)
+                if category == IntentCategory.CHAT:
+                    category = self._correct_chat_to_complex_plan(content, category)
+
                 intent = Intent(
                     type=item.get("type", "general_chat"),
                     category=category,
-                    content=item.get("content", query),
+                    content=content,
                     target=item.get("target", ""),
                     order=item.get("order", 1),
                     confidence=1.0,
@@ -173,6 +196,37 @@ class IntentRecognizer:
         except Exception as e:
             exception(f"解析 LLM 响应失败: {e}", "Intent.Recognizer", e)
             return self._fallback_intent(query)
+
+    # 复杂规划关键词模式：动词 + 名词
+    _COMPLEX_PLAN_VERBS = ["创建", "开发", "设计", "构建", "实现", "搭建", "制作", "编写", "部署"]
+    _COMPLEX_PLAN_NOUNS = ["应用", "系统", "项目", "工具", "平台", "网站", "方案", "架构", "程序", "软件", "服务", "框架"]
+
+    def _correct_chat_to_complex_plan(self, content: str, current_category: IntentCategory) -> IntentCategory:
+        """
+        后处理修正：chat → complex_plan
+
+        LLM 可能将"创建应用"等需要多步骤执行的意图误判为 chat。
+        通过关键词模式二次校验，确保复杂规划意图不被遗漏。
+
+        Args:
+            content: 意图内容
+            current_category: 当前 LLM 判定的类别
+
+        Returns:
+            修正后的类别
+        """
+        if current_category != IntentCategory.CHAT:
+            return current_category
+
+        # 检查是否包含 动词 + 名词 的组合
+        has_verb = any(v in content for v in self._COMPLEX_PLAN_VERBS)
+        has_noun = any(n in content for n in self._COMPLEX_PLAN_NOUNS)
+
+        if has_verb and has_noun:
+            log(f"  [修正] chat → complex_plan: {content[:40]}...", module="Intent.Recognizer")
+            return IntentCategory.COMPLEX_PLAN
+
+        return current_category
     
     def _fallback_intent(self, query: str) -> List[Intent]:
         """

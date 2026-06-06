@@ -56,12 +56,12 @@ class IntentRegistry:
         for intent_type, description in IntentConstants.PLAN_INTENTS.items():
             self._intents[intent_type] = {
                 "type": intent_type,
-                "category": IntentCategory.PLAN,
+                "category": IntentCategory.COMPLEX_PLAN,
                 "description": description,
-                "target": "plan",
+                "target": "complex_plan",
                 "examples": [],
             }
-            log(f"注册 Plan 意图: {intent_type}", module="Intent.Registry")
+            log(f"注册 ComplexPlan 意图: {intent_type}", module="Intent.Registry")
     
     def register_from_mcp_tools(self, mcp_tools: List[BaseTool]) -> int:
         """

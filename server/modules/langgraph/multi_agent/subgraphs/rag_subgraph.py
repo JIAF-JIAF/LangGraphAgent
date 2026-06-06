@@ -81,9 +81,12 @@ class RAGExpertNode(BaseExpertNode):
         writer(Step.RAG_EXPERT.completed_event())
         log(f"[RAGExpert] 完成: {answer[:50]}...", "MultiAgent")
 
-        return {
-            "agent_results": [{"agent": "rag_expert", "answer": answer, "intent_results": intent_results}],
-        }
+        return self._build_result(
+            state, 
+            "rag_expert",
+             answer, 
+             intent_results
+        )
 
 
 def create_rag_expert(agent):

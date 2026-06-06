@@ -1,15 +1,12 @@
 """
-意图识别和路由节点
+意图识别节点
 
-负责：
-1. 识别用户意图（支持多意图）
-2. 根据意图类型决定执行路径（路由优先级由 LEGACY_ROUTE_TABLE 声明式定义）
+负责识别用户意图（支持多意图），为 Supervisor 路由提供意图信息。
 """
 
 from typing import Dict, Any
 from langgraph.config import get_stream_writer
 from modules.logger import log
-from modules.intent import classify_intents, resolve_route, LEGACY_ROUTE_TABLE
 from .steps import Step
 
 
@@ -72,31 +69,3 @@ class IntentRecognizeNode:
             "current_intent_idx": 0,
             "current_intent": current_intent,
         }
-
-
-class IntentRouterNode:
-    """意图路由节点（路由优先级由 LEGACY_ROUTE_TABLE 声明式定义）"""
-
-    def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        根据意图类型决定执行路径
-
-        路由优先级由 LEGACY_ROUTE_TABLE 声明，resolve_route 按表顺序匹配。
-
-        Args:
-            state: 当前状态（包含 intents）
-
-        Returns:
-            更新后的状态（包含 execution_mode）
-        """
-        writer = get_stream_writer()
-        intents = state.get("intents", [])
-
-        writer(Step.INTENT_ROUTER.started_event())
-
-        info = classify_intents(intents)
-        target, detail = resolve_route(info, LEGACY_ROUTE_TABLE, fallback="direct", fallback_label="直接执行")
-
-        log(f"[节点: {Step.INTENT_ROUTER.step}] 路由决策: → {target} ({detail})", "LangGraph")
-        writer(Step.INTENT_ROUTER.completed_event(detail=detail))
-        return {"execution_mode": target}

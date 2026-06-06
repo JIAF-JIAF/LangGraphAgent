@@ -104,6 +104,12 @@ class MultiAgentState(TypedDict):
     # === 多 Agent 协作字段 ===
     current_agent: Annotated[str, keep_last]                # 当前活跃 Agent 名称
     agent_results: Annotated[List[Dict[str, Any]], add_agent_results]  # 各 Agent 结果，自定义 reducer
+    planned_subtasks: Annotated[List[Dict[str, Any]], keep_last]  # Planner 分解的子任务列表（含依赖关系）
+
+    # === Planner 调度内部字段（以 __ 开头，每轮由 Supervisor 重置，不依赖 Checkpointer 持久化值） ===
+    __ready_indices__: Annotated[Optional[List[int]], keep_last]       # 本轮就绪子任务索引列表
+    __dispatch_complete__: Annotated[bool, keep_last]                  # 所有子任务是否已调度完成
+    __subtask_idx__: Annotated[Optional[int], keep_last]               # 当前 Expert 处理的子任务索引（Planner 调度标记）
 
 
 def create_multi_agent_initial_state(
@@ -143,4 +149,8 @@ def create_multi_agent_initial_state(
         "intent_results": [],
         "current_agent": "",
         "agent_results": [],
+        "planned_subtasks": [],
+        "__ready_indices__": None,
+        "__dispatch_complete__": False,
+        "__subtask_idx__": None,
     }

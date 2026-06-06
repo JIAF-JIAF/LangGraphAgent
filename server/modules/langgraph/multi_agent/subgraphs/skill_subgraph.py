@@ -12,6 +12,7 @@ LLM-in-the-loop 自动完成技能选择和参数提取。
   - 结果写入 agent_results：由 Merge 节点统一润色，不直接写 answer
 """
 
+import re
 from typing import Dict, Any, List
 from langgraph.config import get_stream_writer
 from modules.logger import log
@@ -44,6 +45,8 @@ class SkillExpertNode(BaseExpertNode):
         从意图列表中提取技能名称
 
         target 格式固定为 "skill:{skill_name}"，如 "skill:drawio-skill"
+        如果 target 不合法（如用描述文字拼凑的），返回空串，
+        Agent 会走 skill_list 语义匹配找到正确技能。
 
         Args:
             skill_intents: Skill 意图列表
@@ -53,9 +56,15 @@ class SkillExpertNode(BaseExpertNode):
         """
         if not skill_intents:
             return ""
+
         target = skill_intents[0].get("target", "")
         if target.startswith(self.target_prefix):
-            return target[len(self.target_prefix):]
+            name = target[len(self.target_prefix):]
+            # 校验：排除用描述文字拼凑的 target（包含中文/空格/逗号等）
+            # 技能可安装，名称格式不可预知，只排除明显非法的情况
+            if name and not re.search(r'[\s,，。；;！!？?]', name):
+                return name
+
         return ""
 
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -103,9 +112,12 @@ class SkillExpertNode(BaseExpertNode):
         writer(Step.SKILL_EXPERT.completed_event())
         log(f"[SkillExpert] 完成: {answer[:50]}...", "MultiAgent")
 
-        return {
-            "agent_results": [{"agent": "skill_expert", "answer": answer, "intent_results": intent_results}],
-        }
+        return self._build_result(
+            state, 
+            "skill_expert", 
+            answer, 
+            intent_results
+        )
 
 
 def create_skill_expert(agent):

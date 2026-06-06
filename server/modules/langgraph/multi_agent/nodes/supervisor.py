@@ -6,7 +6,7 @@ Supervisor 路由节点
 
 路由策略（最重意图优先，由 SUPERVISOR_ROUTE_TABLE 声明式定义）：
   1. 无意图 → chat_expert（兜底对话）
-  2. PLAN 意图 → planner_expert（Planner 通过委托工具编排跨领域子任务）
+  2. COMPLEX_PLAN 意图 → planner_decompose（Planner 分解后波次调度）
   3. 纯单类别意图 → 对应 Expert（mcp_expert / skill_expert / rag_expert）
   4. 混合可执行意图 → 多 Expert 并行（Send API）
   5. 对话意图 → chat_expert
@@ -34,4 +34,8 @@ def supervisor_node(state: Dict[str, Any]) -> Dict[str, Any]:
     writer = get_stream_writer()
     writer(Step.SUPERVISOR.started_event())
     writer(Step.SUPERVISOR.completed_event(detail="routing"))
-    return {"agent_results": None}
+    return {
+        "agent_results": None,          # 重置（add_agent_results reducer: None → []）
+        "planned_subtasks": [],          # 重置（keep_last reducer: 空列表覆盖旧值）
+        "__dispatch_complete__": False,   # 重置调度完成标记
+    }

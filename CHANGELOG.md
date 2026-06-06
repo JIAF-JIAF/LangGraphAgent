@@ -7,6 +7,69 @@
 
 ---
 
+## [1.9.0] - 2026-06-07
+
+### Added
+- **多 Agent 协作模块（Phase 3：Planner 编排 + 旧架构清理 + Bug 修复）**
+  - `PlannerExpertNode`：Planner 分解+调度 Subgraph，Orchestrator-Worker 模式
+    - `planner_decompose`：LLM 结构化输出分解复杂任务为 `PlannedSubtask` 列表
+    - `planner_dispatch`：波次调度，独立子任务并行 Send，依赖子任务按波次串行
+    - `PlannedSubtask`：含 `targets: List[str]` 字段，引导 LLM 输出正确 target
+    - `_restore_intents_from_subtask`：从子任务恢复意图，2 分支（有 targets / 无 targets 兜底）
+    - `DECOMPOSE_PROMPT`：引导 LLM 填写 targets 字段，减少路由失败
+  - `BaseExpertNode`：Expert 基类，提供 `_build_input` / `_build_result` / `_get_subtask_idx` 公共逻辑
+  - `MergeNode`：合并所有 Expert 结果，3 种润色策略（单 chat / 多子任务 / 单非 chat）
+  - `ChatExpertNode`：Chat Expert Subgraph，集成 RefinerRegistry + chat_refiner 兜底润色
+  - `MCPExpertNode`：MCP Expert Subgraph，ReAct 循环完成工具选择和参数提取
+  - `SkillExpertNode`：Skill Expert Subgraph，含 `_extract_skill_name` 校验逻辑
+  - `RAGExpertNode`：RAG Expert Subgraph，ReAct 循环完成知识库选择、检索和生成
+  - `ExpertAgentFactory`：领域专精 Agent 工厂，`_get_skill_tools` 动态加载技能工具
+  - `chat_refiner.py`：Chat 兜底润色器，替代旧 Refiner 链
+  - 意图识别后处理修正：`_correct_chat_to_complex_plan`，chat → complex_plan 自动修正
+  - `IntentCategory.COMPLEX_PLAN`：新增意图类别，对应 Planner 分解路径
+  - `IntentConstants.COMPLEX_CATEGORIES`：`{PLAN}` 类别组
+
+### Changed
+- **Supervisor 节点增强**
+  - 同时重置 `agent_results`、`planned_subtasks`、`__dispatch_complete__` 三个字段
+  - 避免跨请求残留导致 PlannerDispatch 误判
+- **SkillExpertNode 技能名称提取**
+  - `_extract_skill_name` 增加校验：排除中文/空格/逗号等非法 target
+  - 合法 target → 快速路径（直接 skill_instructions），非法 target → 兜底路径（先 skill_list）
+- **PlannedSubtask 字段统一**
+  - `target: str` → `targets: List[str]`，与可执行意图格式统一
+  - `_restore_intents_from_subtask` 从 3 分支简化为 2 分支
+- **意图识别 Prompt 优化**
+  - 类别选项增加 `complex_plan`，LLM 可识别需要多步骤编排的意图
+  - `_correct_chat_to_complex_plan` 后处理修正，减少误判
+- **Step 枚举更新**
+  - 新增 `PLANNER_DECOMPOSE`、`PLANNER_DISPATCH`、`MERGE`
+  - 移除旧架构步骤：`EXECUTE_DIRECT`、`EXECUTE_TASK`、`CHECK_TASK`、`CALL_MODEL`、`RAG_ROUTER`
+
+### Removed
+- **旧架构代码彻底清理（10 个文件 + 多处引用）**
+  - 删除 `nodes/execute.py`（ExecuteDirectNode, ExecuteTaskNode, CheckTaskCompleteNode）
+  - 删除 `nodes/rag.py`（RouterNode, RetrieveNode）
+  - 删除 `nodes/plan.py`（PlanNode）
+  - 删除 `nodes/model.py`（CallModelNode）
+  - 删除 `graph.py`（旧 GraphBuilder）
+  - 删除 `edges.py`（旧条件路由函数）
+  - 删除 `refiners/intent_refiner.py`、`summary_refiner.py`、`direct_refiner.py`
+  - 删除 `task_generators/` 整个目录（旧任务生成责任链）
+  - 移除 `IntentRouterNode`（旧路径专用路由节点）
+  - 移除 `LEGACY_ROUTE_TABLE` 及相关导出
+  - 移除 `SUPERVISOR_ROUTE_TARGETS` 中的 `execute_direct`、`router` 条目
+  - 移除 `ExecutorRegistry.build_all` 调用和 `executors` 参数
+
+### Fixed
+- **Skill Expert 反复重试 Bug**：Planner 分解子任务时 target 用描述文字拼凑（如 `"skill:根据技术方案设计，使用 drawio..."`），Skill Expert 找不到技能目录。修复：`_extract_skill_name` 校验 + `PlannedSubtask.targets` 引导 LLM 输出正确 target
+- **Supervisor State 残留 Bug**：上一轮走 Planner 路径后，下一轮残留 `planned_subtasks` 导致 PlannerDispatch 误判跳过执行。修复：Supervisor 同时重置三个字段
+- **MergeNode `Step.CALL_MODEL` 引用残留**：已删除枚举仍被引用，替换为 `Step.MERGE`
+- **RefinerRegistry 无润色器注册**：新增 `chat_refiner.py` 作为兜底润色器
+- **summarize_results TypeError**：LLM 传入字典格式导致类型错误，增加格式自适应
+
+---
+
 ## [1.8.0] - 2026-06-03
 
 ### Added
@@ -365,6 +428,18 @@
 - 执行器注册表（ExecutorRegistry）
 - 精炼器注册表（RefinerRegistry）
 
+### Phase 3: Multi-Agent Collaboration (2026-05-30 - 2026-06-07)
+- **Supervisor + Expert + Planner 架构**
+- Supervisor 声明式路由（SUPERVISOR_ROUTE_TABLE）
+- 5 个领域专精 Expert（MCP / Skill / RAG / Planner / Chat）
+- 工具隔离：每个 Expert 只绑定自己领域的工具
+- Send API 并行分发
+- Planner 分解+波次调度（Orchestrator-Worker 模式）
+- Merge 节点统一润色
+- 旧架构代码彻底清理（10 个文件 + 多处引用）
+- 自定义 reducer（add_agent_results、keep_last）
+- Feature Flag 细粒度控制
+
 ---
 
 ## Key Features
@@ -394,28 +469,35 @@
 - 技能执行引擎
 - 支持数据分析、绘图、旅行规划
 
-### 6. 智能任务规划
+### 6. 多 Agent 协作
+- Supervisor 声明式路由（SUPERVISOR_ROUTE_TABLE）
+- 5 个领域专精 Expert（MCP / Skill / RAG / Planner / Chat）
+- Send API 并行分发
+- Planner 分解+波次调度（Orchestrator-Worker 模式）
+- Merge 节点统一润色
+
+### 7. 智能任务规划
 - 基于 LLM 的 1-5 级难度评估
 - 自动生成多步骤执行计划
 - 反思校验机制
 
-### 7. 状态持久化
+### 8. 状态持久化
 - Memory 检查点存储（开发环境）
 - Redis 检查点存储（生产环境）
 - 会话状态持久化
 
-### 8. 情绪感知
+### 9. 情绪感知
 - 6 种情绪检测
 - 动态更新 Prompt
 - 基于关键词规则
 
-### 9. 钉钉集成
+### 10. 钉钉集成
 - 日程管理（创建、查询、删除）
 - 待办事项
 - 钉钉机器人集成
 - Stream 机器人服务
 
-### 10. 可视化配置
+### 11. 可视化配置
 - 前端 UI 管理知识库
 - MCP 工具配置
 - 技能安装管理
@@ -439,11 +521,11 @@
 - **File Preview**: PDF.js, 仓颉编辑器
 
 ### Architecture Patterns
-- **LangGraph**: StateGraph, Checkpointer, Command API
+- **LangGraph**: StateGraph, Checkpointer, Send API, Command API
+- **Orchestrator-Worker**: Planner 分解 + 波次调度
 - **Registry Pattern**: ExecutorRegistry, RefinerRegistry, IntentRegistry
-- **Factory Pattern**: CheckpointFactory, AssistantFactory, LoaderFactory
+- **Factory Pattern**: CheckpointFactory, AssistantFactory, LoaderFactory, ExpertAgentFactory
 - **Strategy Pattern**: ChromaIndexer, MilvusIndexer
-- **Chain of Responsibility**: TaskGeneratorChain
 
 ---
 
@@ -467,5 +549,5 @@ This project is licensed under the MIT License.
 
 ---
 
-**Last Updated**: 2026-06-03  
-**Current Version**: 1.8.0
+**Last Updated**: 2026-06-07  
+**Current Version**: 1.9.0

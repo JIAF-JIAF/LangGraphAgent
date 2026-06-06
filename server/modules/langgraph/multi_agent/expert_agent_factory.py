@@ -11,8 +11,8 @@
 
 参考 2026 LangGraph 最佳实践：
   - Domain-isolated ReAct agent pattern（领域隔离 ReAct 模式）
-  - Structured output enforcement at tool level（工具层结构化输出）
   - Tool hallucination prevention via bounded tool set（有界工具集防幻觉）
+  - Orchestrator-Worker pattern for Planner（Planner 用结构化输出分解，图编排层并行调度）
 """
 
 from typing import List, Optional, Dict, Any
@@ -23,7 +23,6 @@ from modules.logger import log
 from modules.langgraph.multi_agent.tools.mcp_tools import get_mcp_tools, mcp_execute
 from modules.langgraph.multi_agent.tools.skill_tools import get_skill_tools, skill_execute
 from modules.langgraph.multi_agent.tools.rag_tools import create_rag_tools
-from modules.langgraph.multi_agent.tools.planner_tools import create_planner_tools
 
 
 MCP_SYSTEM_PROMPT = """你是一个工具调用专家。你的任务是使用提供的工具来完成用户的请求。
@@ -35,7 +34,7 @@ MCP_SYSTEM_PROMPT = """你是一个工具调用专家。你的任务是使用提
 2. 仔细阅读每个工具的参数说明（args_schema），确保提供正确类型和数量的参数
 3. 如果用户请求需要多个工具，按逻辑顺序依次调用
 4. 前一个工具的返回结果可以作为后一个工具的输入参数
-5. 如果工具调用失败，向用户明确报告失败原因，不要编造结果
+5. 如果某个工具调用失败，向用户明确报告失败原因，不要编造结果；但如果还有其他工具需要调用，请继续执行剩余任务，不要因为部分失败而放弃整体
 6. 不要猜测或编造任何参数值，如果信息不足，请向用户询问
 7. 你必须仔细阅读对话历史，理解上下文语境
 
@@ -88,30 +87,6 @@ RAG_SYSTEM_PROMPT = """你是一个知识库检索专家。你的任务是检索
 2. 热心帮助别人，喜欢跑步和看书。
 3. 你的父亲是tomiezhang。
 4. 当用户提到"今天"、"明天"、"昨天"等相对时间时，请根据上面提供的当前日期进行计算。
-
-{{role_set}}"""
-
-PLANNER_SYSTEM_PROMPT = """你是一个任务规划专家。你的任务是将复杂需求分解为子任务并协调执行。
-
-当前日期：{{current_date}}
-
-重要规则：
-1. 先使用 decompose_task 将复杂任务分解为子任务
-2. 根据子任务类型，使用对应的委托工具执行：
-   - 需要调用外部工具（天气、日程、钉钉等）→ delegate_to_mcp_expert
-   - 需要执行技能（绘制流程图、数据分析、在线表格等）→ delegate_to_skill_expert
-   - 需要检索知识库（考试资料、政策文件等）→ delegate_to_rag_expert
-3. 前一个子任务的结果可以作为后一个子任务的输入
-4. 所有子任务完成后，使用 summarize_results 汇总结果
-5. 只使用下方列出的工具，绝对不要调用不存在的工具
-6. 子任务分解要合理，每个子任务应该是独立可执行的
-7. 如果任务很简单不需要分解，可以直接使用委托工具执行
-8. 当前用户情绪值为{{feelScore}}
-
-你的角色设计如下：
-1. 23岁女性，来自中国。
-2. 热心帮助别人，喜欢跑步和看书。
-3. 你的父亲是tomiezhang。
 
 {{role_set}}"""
 
@@ -236,35 +211,6 @@ class ExpertAgentFactory:
         log(f"[ExpertAgentFactory] 创建 RAG Agent，工具: {[t.name for t in tools]}", "MultiAgent")
         return agent
 
-    def create_planner_agent(self, expert_agents: Optional[Dict[str, Any]] = None) -> Optional[Agent]:
-        """
-        创建 Planner 专精 Agent
-
-        工具来源：create_planner_tools(task_planner, expert_agents) 生成
-        委托工具让 Planner 能跨领域编排，同时保持工具隔离
-        前置条件：task_planner 必须可用
-
-        Args:
-            expert_agents: 各领域 Expert Agent 实例字典
-                {"mcp": Agent, "skill": Agent, "rag": Agent}
-
-        Returns:
-            只绑定 Planner 工具的 Agent 实例，task_planner 不可用时返回 None
-        """
-        if not self._task_planner:
-            log("[ExpertAgentFactory] Planner Agent 创建跳过：task_planner 不可用", "MultiAgent")
-            return None
-
-        tools = create_planner_tools(self._task_planner, expert_agents)
-        prompt = _build_expert_prompt(PLANNER_SYSTEM_PROMPT)
-        agent = Agent(options={
-            "prompt": prompt,
-            "tools": tools,
-            "aiClient": self._ai_client,
-        })
-        log(f"[ExpertAgentFactory] 创建 Planner Agent，工具: {[t.name for t in tools]}", "MultiAgent")
-        return agent
-
     def _get_mcp_tools(self) -> List[BaseTool]:
         """
         获取 MCP 工具列表，空列表时使用兜底工具
@@ -289,6 +235,7 @@ class ExpertAgentFactory:
             tools = get_skill_tools(self._skill_manager)
         else:
             tools = []
+
         if not tools:
             tools = [skill_execute]
             log("[ExpertAgentFactory] Skill 动态工具为空，使用 skill_execute 兜底", "MultiAgent")

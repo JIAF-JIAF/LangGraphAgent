@@ -23,14 +23,6 @@ class Step(Enum):
 
     FEELING_DETECT = ("feeling_detect", "情绪分析", "😊")
     INTENT_RECOGNIZE = ("intent_recognize", "意图识别", "🎯")
-    INTENT_ROUTER = ("intent_router", "路由决策", "🔀")
-    RAG_ROUTER = ("rag_router", "检索路由", "🔀")
-    RETRIEVE = ("retrieve", "知识检索", "📚")
-    PLAN = ("plan", "任务规划", "📋")
-    EXECUTE_DIRECT = ("execute_direct", "直接执行", "⚡")
-    EXECUTE_TASK = ("execute_task", "执行任务", "⚙️")
-    CHECK_TASK = ("check_task_complete", "检查任务", "✅")
-    CALL_MODEL = ("call_model", "生成回答", "🤖")
 
     SUPERVISOR = ("supervisor", "Agent 调度", "🔀")
     RAG_EXPERT = ("rag_expert", "知识检索 Agent", "📚")
@@ -38,6 +30,9 @@ class Step(Enum):
     MCP_EXPERT = ("mcp_expert", "工具调用 Agent", "🔧")
     CHAT_EXPERT = ("chat_expert", "对话 Agent", "💬")
     PLANNER_EXPERT = ("planner_expert", "任务规划 Agent", "📋")
+    PLANNER_DECOMPOSE = ("planner_decompose", "任务分解", "📋")
+    PLANNER_DISPATCH = ("planner_dispatch", "任务调度", "🔀")
+    MERGE = ("merge", "结果整合", "🔗")
 
     def __init__(self, step, label, icon):
         self._step = step
