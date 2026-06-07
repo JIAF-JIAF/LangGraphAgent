@@ -7,6 +7,56 @@
 
 ---
 
+## [2.1.0] - 2026-06-08
+
+### Changed
+- **插件化架构重构（核心架构变更）**
+  - Expert 从硬编码 Subgraph 重构为基于 `ExpertPlugin` 抽象基类的插件化架构
+  - 新增 `ExpertPlugin` 抽象基类（`plugin_base.py`）：定义 `meta` / `execute` / `on_activate` / `on_deactivate` / `render_capability` 契约
+  - 新增 `ExpertMeta` 数据类（`meta.py`）：统一插件元信息（name / category / description / priority / icon / label）
+  - 新增 `PluginRegistry` 注册表（`plugin_registry.py`）：管理插件生命周期，提供框架集成接口
+    - `register_graph_nodes()`：动态注册图节点和边，替代硬编码 `graph.add_node` + `graph.add_edge`
+    - `build_category_map()`：动态生成 category → expert 映射，替代硬编码 `CATEGORY_EXPERT_MAP`
+    - `build_dispatch_targets()`：动态生成调度路由目标，替代硬编码 `PLANNER_DISPATCH_TARGETS`
+    - `build_capability_descriptions()`：动态生成能力描述，替代硬编码 `DECOMPOSE_PROMPT` 中的能力列表
+  - 新增 `helpers.py`：插件公共工具函数（`filter_intents_by_category` / `build_hints_input` / `invoke_agent_safely` / `build_agent_result` 等）
+  - 4 个内置插件实现：
+    - `MCPPlugin`（`plugins/mcp_plugin.py`）：MCP 工具调用插件
+    - `SkillPlugin`（`plugins/skill_plugin.py`）：技能执行插件
+    - `RAGPlugin`（`plugins/rag_plugin.py`）：知识库检索插件
+    - `ChatPlugin`（`plugins/chat_plugin.py`）：对话处理插件
+  - `PlannerDecomposeNode` 改为从 `PluginRegistry` 动态获取能力描述
+  - `PlannerDispatchNode` 改为从 `PluginRegistry` 动态获取路由映射
+  - `MultiAgentGraphBuilder` 改为从 `PluginRegistry` 动态注册图节点和边
+  - `Step` 枚举支持动态步骤注册（`register_step` / `get_step`），新插件自动支持 SSE 事件推送
+- **插件初始化方式统一**
+  - 所有插件在构造函数中初始化 `self._meta`，通过 `@property meta` 返回
+  - 所有插件在 `on_activate(context)` 中获取依赖（ai_client / rag_workflow 等）并创建 Agent
+  - 基类提供 `_invoke_agent` 和 `_build_result` 辅助方法，插件主动调用
+- **Planner 模块拆分**
+  - `PlannerDecomposeNode` 独立为 `planner/decompose.py`
+  - `PlannerDispatchNode` 独立为 `planner/dispatch.py`
+  - 移除 `planner/__init__.py`（仅导入，无实质内容）
+- **代码质量优化**
+  - `PluginRegistry.build_category_map()` 优先级比较逻辑简化，避免 if 嵌套
+  - `graph.py` 内嵌套方法提取为类方法（`_route_from_supervisor` / `_route_from_planner_dispatch`）
+  - 移除所有 `importlib` 动态导入，改为顶层静态导入
+  - 移除 `global` 关键字使用，改为实例属性
+
+### Removed
+- `ExpertMeta.enabled` 字段（插件可用性通过条件注册和 `on_activate` 中跳过 Agent 创建处理）
+- 旧 Subgraph 文件（`subgraphs/mcp_subgraph.py` / `skill_subgraph.py` / `rag_subgraph.py` / `chat_subgraph.py` / `planner_subgraph.py`）
+- 旧工具文件（`tools/mcp_tools.py` / `skill_tools.py` / `rag_tools.py` / `planner_tools.py`）
+- 旧 `expert_agent_factory.py`
+- 硬编码 `CATEGORY_EXPERT_MAP` 和 `PLANNER_DISPATCH_TARGETS`
+
+### Fixed
+- **意图识别优化**：LLM Prompt 新增"优先匹配可用意图列表中的具体意图"规则，修正示例（`mcp_get_weather_recommendation` 不再误识别为 `complex_plan`）
+- **客户端超时**：`test.js` 的 `fetch` 添加 `AbortController` 超时控制（10 分钟），避免长时间请求被系统层断开报 `fetch failed`
+- **RAG 插件注册**：移除条件注册，统一无条件注册，在 `on_activate` 中处理 `rag_workflow` 不可用的情况
+
+---
+
 ## [2.0.0] - 2026-06-07
 
 ### Changed

@@ -3,10 +3,97 @@
 
 统一管理所有节点的步骤标识、显示名称和图标，
 并提供事件生成方法，节点代码只需一行即可推送进度事件。
+
+支持动态 Step 注册：新增 Expert 插件可通过 register_step() 注册自定义步骤，
+SSE 事件推送自动支持新步骤标识。
 """
 
 from enum import Enum
+from typing import Dict, Optional
 from modules.sse.events import StepStatus
+
+
+# 动态 Step 注册表（供插件使用）
+_DYNAMIC_STEPS: Dict[str, "DynamicStep"] = {}
+
+
+class DynamicStep:
+    """
+    动态步骤（供插件注册使用）
+
+    与 Step 枚举成员接口一致，提供 started_event / completed_event 方法。
+    """
+
+    def __init__(self, step: str, label: str, icon: str):
+        self._step = step
+        self._label = label
+        self._icon = icon
+
+    @property
+    def step(self):
+        return self._step
+
+    @property
+    def label(self):
+        return self._label
+
+    @property
+    def icon(self):
+        return self._icon
+
+    def started_event(self, detail=""):
+        event = {
+            "step": self._step,
+            "status": StepStatus.STARTED,
+            "label": self._label,
+            "icon": self._icon,
+        }
+        if detail:
+            event["detail"] = detail
+        return event
+
+    def completed_event(self, detail=""):
+        return {
+            "step": self._step,
+            "status": StepStatus.COMPLETED,
+            "label": self._label,
+            "icon": self._icon,
+            "detail": detail,
+        }
+
+
+def register_step(step_id: str, label: str, icon: str) -> DynamicStep:
+    """
+    注册动态 Step（供插件使用）
+
+    Args:
+        step_id: 步骤标识，如 "code_expert"
+        label: 显示名称，如 "代码生成 Agent"
+        icon: 图标，如 "💻"
+
+    Returns:
+        DynamicStep 实例
+    """
+    step = DynamicStep(step_id, label, icon)
+    _DYNAMIC_STEPS[step_id] = step
+    return step
+
+
+def get_step(step_id: str) -> Optional[DynamicStep]:
+    """
+    获取 Step（优先查固定枚举，再查动态注册表）
+
+    Args:
+        step_id: 步骤标识
+
+    Returns:
+        Step 枚举成员或 DynamicStep 实例，不存在返回 None
+    """
+    # 枚举成员名查找
+    if step_id in Step.__members__:
+        return Step[step_id]
+    # 动态注册表查找
+    return _DYNAMIC_STEPS.get(step_id)
 
 
 class Step(Enum):

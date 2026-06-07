@@ -1,0 +1,106 @@
+"""
+RAG Expert 插件
+
+处理知识库检索意图。使用领域专精 Agent（只绑定 RAG 工具），
+LLM-in-the-loop 自动完成知识库选择、检索和答案生成。
+"""
+
+from typing import Dict, Any, List, Optional
+
+from langchain_core.tools import BaseTool
+from modules.logger import log
+from modules.langgraph.multi_agent.meta import ExpertMeta
+from modules.langgraph.multi_agent.plugin_base import ExpertPlugin
+from modules.langgraph.multi_agent.helpers import (
+    filter_intents_by_category,
+    build_hints_input,
+    build_base_context,
+    build_intent_results,
+)
+from modules.langgraph.multi_agent.tools.rag_tools import create_rag_tools
+from modules.langgraph.multi_agent.expert_agent_factory import RAG_SYSTEM_PROMPT, _build_expert_prompt
+from modules.assistant import Agent
+
+
+class RAGPlugin(ExpertPlugin):
+    """知识库检索插件"""
+
+    def __init__(self):
+        """初始化 RAG 插件"""
+        self._meta = ExpertMeta(
+            name="rag_expert",
+            category="rag",
+            description="知识库检索（考试题库、政治理论等）",
+            icon="📚",
+            label="知识检索 Agent",
+        )
+
+    @property
+    def meta(self) -> ExpertMeta:
+        """
+        插件元信息
+
+        Returns:
+            ExpertMeta 实例，包含 name/category/description/icon/label
+        """
+        return self._meta
+
+    def on_activate(self, context: Dict[str, Any]):
+        """
+        激活回调：创建 RAG 领域专精 Agent
+
+        Args:
+            context: 共享资源上下文，包含 ai_client/rag_workflow 等
+        """
+        self._rag_workflow = context.get("rag_workflow")
+        if not self._rag_workflow:
+            log("[RAGPlugin] rag_workflow 不可用，跳过 Agent 创建", "Plugin")
+            return
+
+        ai_client = context["ai_client"]
+        tools = create_rag_tools(self._rag_workflow)
+        prompt = _build_expert_prompt(RAG_SYSTEM_PROMPT)
+
+        self._agent = Agent(options={"prompt": prompt, "tools": tools, "aiClient": ai_client})
+        log(f"[RAGPlugin] Agent 创建完成，工具: {[t.name for t in tools]}", "Plugin")
+
+    def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        执行知识库检索
+
+        Args:
+            state: LangGraph 状态（query, intents, __subtask_idx__ 等）
+
+        Returns:
+            状态更新字典，包含 agent_results
+        """
+        query = state["query"]
+        intents = filter_intents_by_category(state.get("intents", []), "rag")
+        input_text = build_hints_input(
+            query, intents,
+            target_prefix="knowledge_base:",
+            single_hint="请在 {target} 知识库中检索以下内容",
+            multi_hint="请检索以下内容：",
+        )
+
+        log(f"[RAGPlugin] 处理 RAG 意图: {len(intents)} 个, 输入: {input_text[:50]}...", "Plugin")
+
+        context = build_base_context(state)
+        answer = self._invoke_agent(self._agent, input_text, context)
+        log(f"[RAGPlugin] 完成: {answer[:50]}...", "Plugin")
+
+        intent_results = build_intent_results(intents, answer, "rag")
+        return self._build_result(answer, state, intent_results=intent_results)
+
+    def render_capability(self) -> str:
+        """
+        渲染能力描述（用于 Planner DECOMPOSE_PROMPT）
+
+        Returns:
+            能力描述文本，包含当前可用知识库列表
+        """
+        if not hasattr(self, '_rag_workflow') or not self._rag_workflow:
+            return "rag: 知识库检索（当前不可用）"
+        tools = create_rag_tools(self._rag_workflow)
+        kb_names = ", ".join([t.name for t in tools]) if tools else "无"
+        return f"rag: 知识库检索。当前可用知识库：{kb_names}"

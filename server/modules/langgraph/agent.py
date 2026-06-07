@@ -6,21 +6,24 @@ LangGraph Agent - 主入口
 - 编译状态图
 - 提供统一调用接口
 
-架构设计（多 Agent 架构）：
-- agent.py：主入口，负责组件初始化和图编译
+架构设计（插件化多 Agent 架构）：
+- agent.py：主入口，负责组件初始化、插件注册和图编译
 - nodes/：前置节点（feeling_detect, intent_recognize）
 - multi_agent/：多 Agent 协作模块（Supervisor, Expert, Planner, Merge）
+- multi_agent/plugins/：Expert 插件目录（新增 Expert 只需添加插件）
 """
 
 from typing import Optional, Dict, Any
 from modules.logger import log
 from .states import AgentState
 from .multi_agent.graph import MultiAgentGraphBuilder
+from .multi_agent.plugin_registry import PluginRegistry
+from .multi_agent.plugins import MCPPlugin, SkillPlugin, RAGPlugin, ChatPlugin
 
 
 class LangGraphAgent:
     """
-    LangGraph Agent
+    LangGraph Agent（插件化架构）
 
     核心功能：
     - 调用 RAGWorkflow 处理检索逻辑（可替换）
@@ -29,10 +32,10 @@ class LangGraphAgent:
     - 支持感情侦测，动态更新 prompt（可替换）
     - 支持任务规划：将复杂需求拆分为子任务（可替换）
 
-    设计理念：
-    - 所有核心组件均通过构造函数注入，内部不感知具体实现
-    - 通过鸭子类型实现多态，只需实现约定的接口方法即可替换
-    - 保持架构灵活性，支持多种实现方案无缝切换
+    插件化架构：
+    - Expert 通过 PluginRegistry 动态注册
+    - 新增 Expert 只需：1) 继承 ExpertPlugin  2) registry.register(YourPlugin())
+    - 框架代码零改动
     """
 
     def __init__(
@@ -72,23 +75,59 @@ class LangGraphAgent:
         self._skill_manager = skill_manager
         self._graph = None
 
+        # 初始化插件注册表
+        self._registry = self._init_plugin_registry()
+
         # 构建图
         self._build_graph()
 
+    def _init_plugin_registry(self) -> PluginRegistry:
+        """
+        初始化插件注册表，注册内置插件
+
+        新增 Expert 只需在此方法末尾添加一行：
+            registry.register(YourPlugin())
+
+        Returns:
+            已激活的 PluginRegistry 实例
+        """
+        registry = PluginRegistry()
+
+        # 注册内置插件
+        registry.register(MCPPlugin())
+        registry.register(SkillPlugin())
+        registry.register(RAGPlugin())
+        registry.register(ChatPlugin())
+
+        # === 新增 Expert 在此添加 ===
+        # registry.register(YourPlugin())
+
+        # 激活所有插件（创建 Agent、绑定工具）
+        context = {
+            "ai_client": self._ai_client,
+            "rag_workflow": self._rag_workflow,
+            "skill_manager": self._skill_manager,
+            "base_agent": self._agent,
+            "task_planner": self._task_planner,
+        }
+        registry.activate_all(context)
+
+        registered = list(registry.get_all_plugins().keys())
+        log(f"插件注册完成，已激活: {registered}", "LangGraph")
+
+        return registry
+
     def _build_graph(self):
-        """构建多 Agent 状态图"""
+        """构建多 Agent 状态图（插件化架构）"""
         builder = MultiAgentGraphBuilder(
+            plugin_registry=self._registry,
             feeling_detector=self._feeling_detector,
             intent_router=self._intent_router,
-            agent=self._agent,
-            rag_workflow=self._rag_workflow,
-            task_planner=self._task_planner,
             ai_client=self._ai_client,
-            skill_manager=self._skill_manager,
         )
         self._graph = builder.build()
         self._graph = self._graph.compile(checkpointer=self._checkpointer)
-        log("LangGraph 多 Agent 状态图构建完成", "LangGraph")
+        log("LangGraph 多 Agent 状态图构建完成（插件化架构）", "LangGraph")
 
     def invoke(self, query: str, session_id: str = "default", uid: Optional[str] = None) -> Dict[str, Any]:
         """

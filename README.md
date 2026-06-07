@@ -7,6 +7,7 @@
 - **分层漏斗路由**: L1 关键词（<1ms）→ L2 向量语义 → L3 LLM 识别，80% 请求在 L1 层处理
 - **多意图识别**: 支持同时识别多个意图，如"查询行测技巧并画架构图"
 - **多 Agent 协作**: Supervisor + 4 个领域专精 Expert，统一 Planner 路由 + 波次调度
+- **插件化架构**: 基于 ExpertPlugin 抽象基类 + PluginRegistry 注册表，新增 Expert 只需添加插件，框架代码零改动
 - **Planner 编排**: Orchestrator-Worker 模式，可执行意图直接构建子任务 + complex_plan LLM 独立分解，支持跨 Expert 依赖
 - **模块化 RAG**: 可插拔的索引器、检索器、生成器，支持 ChromaDB / Milvus
 - **MCP 工具服务**: 独立部署的工具服务，支持分布式多服务器，动态添加/删除
@@ -35,15 +36,18 @@ LangGraphAgent/
 │   │   │   ├── states/          # 状态类型
 │   │   │   ├── executors/       # 执行器（责任链模式）
 │   │   │   ├── nodes/          # 节点定义
-│   │   │   ├── planner/         # 任务规划器
+│   │   │   ├── planner/         # 任务规划器（decompose + dispatch）
 │   │   │   ├── reflection/      # 反思校验器
-│   │   │   ├── multi_agent/     # 多 Agent 协作模块（Phase 3 Planner 编排 + 旧架构清理）
+│   │   │   ├── multi_agent/     # 多 Agent 协作模块（插件化架构）
 │   │   │       ├── graph.py     # 多 Agent 主图构建器
 │   │   │       ├── states.py    # MultiAgentState（自定义 reducer）
-│   │   │       ├── expert_agent_factory.py # 领域专精 Agent 工厂
+│   │   │       ├── plugin_base.py # ExpertPlugin 抽象基类
+│   │   │       ├── plugin_registry.py # PluginRegistry 插件注册表
+│   │   │       ├── meta.py      # ExpertMeta 数据类
+│   │   │       ├── helpers.py   # 插件公共工具函数
 │   │   │       ├── nodes/       # Supervisor + Merge 节点
-│   │   │       ├── subgraphs/   # Expert Subgraph（MCP/Skill/RAG/Planner/Chat）
-│   │   │       └── tools/       # 工具封装（MCP/Skill/RAG/Planner）
+│   │   │       ├── plugins/     # 业务插件（MCP/Skill/RAG/Chat）
+│   │   │       └── planner/     # Planner 分解+调度（decompose + dispatch）
 │   │   ├── intent/              # 意图识别模块（2026-05 新增）
 │   │   │   ├── intent_types.py  # 意图类型定义
 │   │   │   ├── intent_registry.py # 意图注册表（动态注册）
@@ -365,9 +369,65 @@ writer(Step.FEELING_DETECT.completed_event(detail="积极 (8)"))
 | `CHAT_EXPERT`       | `chat_expert`       | 对话生成   | 🤖 |
 | `MERGE`             | `merge`             | 结果合并   | ✅  |
 
-### 多 Agent 协作架构（Phase 3）
+### 多 Agent 协作架构（插件化）
 
-Phase 3 在 Phase 2 专家架构基础上，新增 Planner 编排能力，并彻底清理旧架构代码。
+系统采用 **ExpertPlugin + PluginRegistry** 插件化架构，新增 Expert 只需添加插件，框架代码零改动。
+
+#### 插件化架构
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    PluginRegistry                        │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
+│  │MCPPlugin │ │SkillPlugin│ │RAGPlugin │ │ChatPlugin│   │
+│  │category: │ │category: │ │category: │ │category: │   │
+│  │  mcp     │ │  skill   │ │  rag     │ │  chat    │   │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘   │
+│       │             │            │            │          │
+│  ┌────┴─────────────┴────────────┴────────────┴────┐    │
+│  │  ExpertPlugin (抽象基类)                          │    │
+│  │  meta / execute / on_activate / render_capability │    │
+│  └──────────────────────────────────────────────────┘    │
+│                                                          │
+│  框架集成接口：                                           │
+│  register_graph_nodes()  → 动态注册图节点和边             │
+│  build_category_map()    → category → expert 映射        │
+│  build_dispatch_targets() → 调度路由目标                  │
+│  build_capability_descriptions() → Planner 能力描述       │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### 新增 Expert 步骤
+
+```python
+# 1. 继承 ExpertPlugin，实现 meta + execute
+class MyPlugin(ExpertPlugin):
+    def __init__(self):
+        self._meta = ExpertMeta(
+            name="my_expert",
+            category="my_category",
+            description="我的自定义 Expert",
+            icon="🚀",
+            label="自定义 Agent",
+        )
+
+    @property
+    def meta(self) -> ExpertMeta:
+        return self._meta
+
+    def on_activate(self, context: Dict[str, Any]):
+        ai_client = context["ai_client"]
+        # 创建 Agent...
+
+    def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        # 执行业务逻辑...
+        return self._build_result(answer, state)
+
+# 2. 注册插件（agent.py）
+registry.register(MyPlugin())
+
+# 3. 完成！框架自动注册图节点、边、路由映射、能力描述
+```
 
 #### 核心设计原则
 
@@ -375,7 +435,8 @@ Phase 3 在 Phase 2 专家架构基础上，新增 Planner 编排能力，并彻
 2. **LLM-in-the-loop**：参数提取由 LLM 完成，不手动拼装参数
 3. **Orchestrator-Worker 模式**：Planner 分解复杂任务为子任务，波次调度并行/串行执行
 4. **意图即上下文**：将意图信息作为 Agent 输入的上下文提示，避免其他类别意图污染
-5. **统一 Planner 路由**：所有意图统一路由到 planner_decompose，Planner 内部区分可执行/复杂规划意图
+5. **契约式设计**：基类定义核心接口（meta / execute），插件自主实现业务逻辑，公共功能通过 helpers.py 按需复用
+6. **统一 Planner 路由**：所有意图统一路由到 planner_decompose，Planner 内部区分可执行/复杂规划意图
 
 #### Expert 节点说明
 
@@ -1079,6 +1140,44 @@ DELETE /api/skills/{name} # 删除技能
 
 ## 自定义扩展
 
+### 添加新 Expert 插件
+
+新增 Expert 只需 2 步，框架代码零改动：
+
+```python
+# 1. 创建插件文件 server/modules/langgraph/multi_agent/plugins/my_plugin.py
+from modules.langgraph.multi_agent.plugin_base import ExpertPlugin
+from modules.langgraph.multi_agent.meta import ExpertMeta
+
+class MyPlugin(ExpertPlugin):
+    def __init__(self):
+        self._meta = ExpertMeta(
+            name="my_expert",
+            category="my_category",
+            description="我的自定义 Expert",
+            icon="🚀",
+            label="自定义 Agent",
+        )
+
+    @property
+    def meta(self) -> ExpertMeta:
+        return self._meta
+
+    def on_activate(self, context):
+        ai_client = context["ai_client"]
+        # 创建 Agent、加载工具...
+
+    def execute(self, state):
+        # 执行业务逻辑...
+        return self._build_result(answer, state)
+
+# 2. 注册插件（server/modules/langgraph/agent.py）
+from modules.langgraph.multi_agent.plugins.my_plugin import MyPlugin
+registry.register(MyPlugin())
+
+# 完成！框架自动注册图节点、边、路由映射、能力描述
+```
+
 ### 修改系统提示词
 
 编辑 `backend/modules/prompt/__init__.py` 中的 `PromptClass` 类，修改 `SystemPrompt` 和 `MOODS` 配置。
@@ -1269,6 +1368,7 @@ DINGTALK_CLIENT_SECRET=your_app_secret
 - ✅ 多意图识别
 - ✅ 多 Agent 协作（Supervisor + Expert + Planner 编排）
 - ✅ Planner 分解+波次调度（Orchestrator-Worker 模式）
+- ✅ 插件化架构（ExpertPlugin + PluginRegistry，新增 Expert 零框架改动）
 - ✅ 旧架构代码清理
 - ✅ 钉钉集成（日程、待办）
 - ✅ Docker 容器化部署
@@ -1282,6 +1382,7 @@ DINGTALK_CLIENT_SECRET=your_app_secret
 - 🔄 L2 向量语义匹配实现
 - 🔄 更多技能支持
 - 🔄 Merge 润色优化（分段润色减少耗时）
+- 🔄 波次调度优化（complex_plan 链独立并行路径，减少等待时间）
 
 ## License
 

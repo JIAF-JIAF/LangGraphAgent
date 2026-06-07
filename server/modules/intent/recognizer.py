@@ -109,10 +109,15 @@ class IntentRecognizer:
         - "帮我画个图" → skill（直接执行技能）
         - "开发一个在线表格应用" → complex_plan（需要拆分子任务，多步骤执行）
         - "设计一个微服务架构方案" → complex_plan（需要多步骤规划）
-        - "杭州天气怎么样，适合去哪玩" → 两个意图：mcp(查天气) + complex_plan(推荐游玩，依赖天气结果)
+        - "杭州天气怎么样，适合去哪玩" → 两个意图：mcp_get_weather(查天气) + mcp_get_weather_recommendation(推荐游玩)
         - "你好" → chat（简单对话）
         - "什么是量子力学" → chat（简单问答，LLM 直接回答）
         - "帮我写一首诗" → chat（简单创作，LLM 直接回答）
+
+        ⚠️ 重要：优先匹配可用意图列表中的具体意图
+        - 当用户请求可以被可用意图列表中的某个具体意图处理时，必须选择该意图，不要归为 complex_plan
+        - 例如：如果可用意图中有 mcp_get_weather_recommendation，"适合去哪玩"应识别为 mcp_get_weather_recommendation，而不是 complex_plan
+        - 只有当用户请求确实无法被任何可用意图处理，且需要多步骤执行时，才归为 complex_plan
 
         complex_plan vs chat 的核心区分：
         - complex_plan：需要多步骤执行，涉及创建/开发/设计/构建等动作，无法一步完成
