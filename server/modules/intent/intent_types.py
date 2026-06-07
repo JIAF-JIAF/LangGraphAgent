@@ -241,94 +241,15 @@ def resolve_route(
 
 
 SUPERVISOR_ROUTE_TABLE: List[RouteRule] = [
+    # 统一路由：所有意图均走 planner_decompose
+    # Planner 内部区分处理：
+    #   - 可执行意图（mcp/skill/rag/chat/system）→ 直接构建子任务，不调 LLM，单波次完成
+    #   - complex_plan 意图 → LLM 独立分解，保留完整规划能力
+    #   - 混合意图 → 可执行直接构建 + complex_plan LLM 分解，合并后波次调度
     RouteRule(
-        condition=lambda i: IntentCategory.COMPLEX_PLAN in i["categories"],
+        condition=lambda i: True,
         target="planner_expert",
-        label="复杂规划意图 → planner_expert",
-    ),
-    RouteRule(
-        condition=lambda i: i["has_complex"],
-        target="planner_expert",
-        label="复杂意图(含未知类别): {complex_names}; 全部: {cat_names}",
-    ),
-    RouteRule(
-        condition=lambda i: _is_single_category(i, IntentCategory.MCP),
-        target="mcp_expert",
-        label="MCP 意图 → mcp_expert",
-    ),
-    RouteRule(
-        condition=lambda i: _is_single_category(i, IntentCategory.SKILL),
-        target="skill_expert",
-        label="Skill 意图 → skill_expert",
-    ),
-    RouteRule(
-        condition=lambda i: _is_single_category(i, IntentCategory.RAG),
-        target="rag_expert",
-        label="RAG 意图 → rag_expert",
-    ),
-    RouteRule(
-        condition=lambda i: i["has_executable"],
-        target="__parallel__",
-        label="混合可执行: {exec_names}; 全部: {cat_names}",
-    ),
-    RouteRule(
-        condition=lambda i: i["has_dialog"],
-        target="chat_expert",
-        label="对话: {cat_names}",
+        label="统一路由 → planner_expert（类别: {cat_names}）",
     ),
 ]
 
-EXPERT_ROUTE_TABLE: List[RouteRule] = [
-    RouteRule(
-        condition=lambda i: IntentCategory.COMPLEX_PLAN in i["categories"],
-        target="planner_expert",
-        label="复杂规划意图 → planner_expert",
-    ),
-    RouteRule(
-        condition=lambda i: _is_single_category(i, IntentCategory.MCP),
-        target="mcp_expert",
-        label="MCP 意图 → mcp_expert",
-    ),
-    RouteRule(
-        condition=lambda i: _is_single_category(i, IntentCategory.SKILL),
-        target="skill_expert",
-        label="Skill 意图 → skill_expert",
-    ),
-    RouteRule(
-        condition=lambda i: _is_single_category(i, IntentCategory.RAG),
-        target="rag_expert",
-        label="RAG 意图 → rag_expert",
-    ),
-    RouteRule(
-        condition=lambda i: i["has_executable"],
-        target="execute_direct",
-        label="混合可执行: {exec_names}",
-    ),
-    RouteRule(
-        condition=lambda i: i["has_dialog"],
-        target="chat_expert",
-        label="对话: {cat_names}",
-    ),
-]
-
-
-def _is_single_category(info: Dict[str, Any], category: IntentCategory) -> bool:
-    """
-    判断意图集合的可执行意图是否仅属于指定类别（忽略 CHAT/SYSTEM）
-
-    用于细粒度路由：当所有可执行意图属于同一类别时，
-    直接路由到对应的 Expert，CHAT 意图由该 Expert 一并处理。
-
-    例如：MCP + CHAT → mcp_expert（问候语由 MCP Expert 的回答自然包含）
-         MCP + Skill  → __parallel__（需要并行分发）
-
-    Args:
-        info: classify_intents 的返回值
-        category: 目标类别
-
-    Returns:
-        是否仅包含指定类别的可执行意图
-    """
-    categories = info["categories"]
-    executable_cats = categories & IntentConstants.EXECUTABLE_CATEGORIES
-    return bool(executable_cats) and executable_cats == {category}

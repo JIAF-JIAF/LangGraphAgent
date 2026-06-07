@@ -6,8 +6,8 @@
 
 - **分层漏斗路由**: L1 关键词（<1ms）→ L2 向量语义 → L3 LLM 识别，80% 请求在 L1 层处理
 - **多意图识别**: 支持同时识别多个意图，如"查询行测技巧并画架构图"
-- **多 Agent 协作**: Supervisor + 5 个领域专精 Expert + Planner 编排，Send API 并行分发
-- **Planner 编排**: Orchestrator-Worker 模式，LLM 结构化分解 + 波次调度，支持跨 Expert 依赖
+- **多 Agent 协作**: Supervisor + 4 个领域专精 Expert，统一 Planner 路由 + 波次调度
+- **Planner 编排**: Orchestrator-Worker 模式，可执行意图直接构建子任务 + complex_plan LLM 独立分解，支持跨 Expert 依赖
 - **模块化 RAG**: 可插拔的索引器、检索器、生成器，支持 ChromaDB / Milvus
 - **MCP 工具服务**: 独立部署的工具服务，支持分布式多服务器，动态添加/删除
 - **技能系统**: 基于 SKILL.md 的技能匹配和执行引擎，支持数据分析、绘图、旅行规划
@@ -35,7 +35,6 @@ LangGraphAgent/
 │   │   │   ├── states/          # 状态类型
 │   │   │   ├── executors/       # 执行器（责任链模式）
 │   │   │   ├── nodes/          # 节点定义
-│   │   │   ├── refiners/        # 结果精炼器（chat_refiner）
 │   │   │   ├── planner/         # 任务规划器
 │   │   │   ├── reflection/      # 反思校验器
 │   │   │   ├── multi_agent/     # 多 Agent 协作模块（Phase 3 Planner 编排 + 旧架构清理）
@@ -140,38 +139,26 @@ sequenceDiagram
     Intent->>Supervisor: intents
     Supervisor->>Supervisor: 重置 agent_results / planned_subtasks
 
-    alt 单一 MCP 意图
-        Supervisor->>MCP: Send / 直接路由
-        MCP->>Merge: agent_results
-    else 单一 Skill 意图
-        Supervisor->>Skill: Send / 直接路由
-        Skill->>Merge: agent_results
-    else 单一 RAG 意图
-        Supervisor->>RAG: Send / 直接路由
-        RAG->>Merge: agent_results
-    else COMPLEX_PLAN 意图
-        Supervisor->>Planner: 直接路由
-        Planner->>Planner: LLM 结构化分解为 PlannedSubtask 列表
-        Planner->>Dispatch: 波次调度
-        Dispatch->>MCP: Send（并行/串行）
-        Dispatch->>Skill: Send（并行/串行）
-        Dispatch->>RAG: Send（并行/串行）
+    Note over Supervisor,Merge: 统一 Planner 路由：所有意图 → planner_decompose
+
+    Supervisor->>Planner: 统一路由
+    Planner->>Planner: 可执行意图直接构建子任务（不调 LLM）
+    Planner->>Planner: complex_plan 意图 LLM 独立分解
+    Planner->>Planner: 合并为统一子任务列表
+
+    Planner->>Dispatch: planned_subtasks
+    loop 波次调度循环
+        Dispatch->>Dispatch: 计算就绪子任务（depends_on 已满足）
+        Dispatch->>MCP: Send（并行）
+        Dispatch->>Skill: Send（并行）
+        Dispatch->>RAG: Send（并行）
+        Dispatch->>Chat: Send（并行）
         MCP->>Dispatch: agent_results
         Skill->>Dispatch: agent_results
         RAG->>Dispatch: agent_results
-        Dispatch->>Dispatch: 下一波次 / 全部完成
-        Dispatch->>Merge: agent_results
-    else 混合可执行意图
-        Supervisor->>MCP: Send（并行）
-        Supervisor->>Skill: Send（并行）
-        Supervisor->>RAG: Send（并行）
-        MCP->>Merge: agent_results
-        Skill->>Merge: agent_results
-        RAG->>Merge: agent_results
-    else 对话意图
-        Supervisor->>Chat: 直接路由
-        Chat->>Merge: agent_results
+        Chat->>Dispatch: agent_results
     end
+    Dispatch->>Merge: 全部完成
 
     Merge->>Merge: 合并结果 + LLM 润色
     Merge-->>User: 最终回答
@@ -179,49 +166,82 @@ sequenceDiagram
 
 ### 执行层详细流程
 
-以用户输入 **"先查询行测技巧，再画架构图"** 为例：
+以用户输入 **"查杭州天气，画架构图"** 为例（混合可执行意图）：
 
 ```
-用户输入: "先查询行测技巧，再画架构图"
+用户输入: "查杭州天气，画架构图"
         │
         ▼
 intent_recognize (意图识别)
         │
         ├── LLM 分析返回 intents = [
-        │     Intent(type="rag_exams", category="rag", target="knowledge_base:exams"),
+        │     Intent(type="mcp_get_weather", category="mcp", target="mcp:get_weather"),
         │     Intent(type="skill_drawio", category="skill", target="skill:drawio-skill")
         │   ]
         │
         ▼
-supervisor (路由)
+supervisor (统一路由 → planner_decompose)
         │
-        ├── classify_intents → 混合可执行意图（RAG + SKILL）
-        ├── Send(rag_expert, {intents: [rag]})
-        └── Send(skill_expert, {intents: [skill]})
-              │                    │
-              ▼                    ▼
-        rag_expert           skill_expert
-        (并行执行)            (并行执行)
-        │                     │
-        ├── knowledge_search  ├── skill_instructions(drawio-skill)
-        ├── knowledge_generate├── 生成 .drawio XML
-        └── 返回 answer       ├── skill_save_file
-                              └── 返回 answer
-              │                    │
-              └────────┬───────────┘
-                       ▼
-                    merge → LLM 润色 → 最终回答
+        ▼
+planner_decompose (任务分解)
+        │
+        ├── 可执行意图直接构建子任务（不调 LLM）：
+        │     [0] mcp:   查杭州天气      depends_on: []
+        │     [1] skill: 画架构图        depends_on: []
+        │
+        ▼
+planner_dispatch (波次调度)
+        │
+        ├── 第1轮：ready=[0,1] → 并行 Send
+        │     Send(mcp_expert,   {intents: [mcp],   __subtask_idx__: 0})
+        │     Send(skill_expert, {intents: [skill], __subtask_idx__: 1})
+        │
+        ├── Expert 并行执行后回到 planner_dispatch
+        │
+        ├── 第2轮：全部完成 → merge
+        │
+        ▼
+merge → LLM 润色 → 最终回答
+```
+
+以用户输入 **"创建一个在线表格应用"** 为例（纯 complex_plan 意图）：
+
+```
+用户输入: "创建一个在线表格应用"
+        │
+        ▼
+intent_recognize → [complex_plan]
+        │
+        ▼
+supervisor → planner_decompose
+        │
+        ├── 无可执行意图，跳过直接构建
+        ├── LLM 独立分解 complex_plan：
+        │     [0] chat: 分析核心需求        depends_on: []
+        │     [1] chat: 设计数据模型         depends_on: [0]
+        │     [2] chat: 规划技术选型         depends_on: [0]
+        │     [3] chat: 整合输出开发计划      depends_on: [1,2]
+        │
+        ▼
+planner_dispatch (波次调度)
+        │
+        ├── 第1轮：ready=[0]     → Send(chat_expert)
+        ├── 第2轮：ready=[1,2]   → Send(chat_expert) × 2（并行）
+        ├── 第3轮：ready=[3]     → Send(chat_expert)
+        ├── 第4轮：全部完成 → merge
+        │
+        ▼
+merge → LLM 润色 → 最终回答
 ```
 
 **Expert 节点映射**：
 
-| Expert | 类别 | 工具集 | 执行流程 |
-| ------ | ---- | ------ | ------ |
-| `mcp_expert` | MCP | MCP 动态工具 + mcp_execute 兜底 | ReAct 循环选工具→提参→执行 |
-| `skill_expert` | Skill | Skill 动态工具 + skill_execute 兜底 | ReAct 循环选技能→提参→执行 |
-| `rag_expert` | RAG | knowledge_search + knowledge_generate | ReAct 循环选知识库→检索→生成 |
-| `planner_expert` | Plan | planner_decompose + planner_dispatch | LLM 分解→波次调度→Expert 执行 |
-| `chat_expert` | Chat | 无工具（RefinerRegistry 润色） | 直接对话 |
+| Expert           | 类别    | 工具集                                     | 执行流程                  |
+| ---------------- | ----- | --------------------------------------- | --------------------- |
+| `mcp_expert`     | MCP   | MCP 动态工具 + mcp\_execute 兜底              | ReAct 循环选工具→提参→执行     |
+| `skill_expert`   | Skill | Skill 动态工具 + skill\_execute 兜底          | ReAct 循环选技能→提参→执行     |
+| `rag_expert`     | RAG   | knowledge\_search + knowledge\_generate | ReAct 循环选知识库→检索→生成    |
+| `chat_expert`    | Chat  | 无工具（纯内容生成，润色由 MergeNode 统一处理）           | 直接对话                  |
 
 ### 意图识别节点详解
 
@@ -272,14 +292,14 @@ factory.py 初始化流程:
 
 ### 意图类型
 
-| 类别     | 枚举值      | 说明       | 示例                                    |
-| ------ | -------- | -------- | ------------------------------------- |
-| RAG    | `rag`    | 知识库检索    | rag\_exams, rag\_politics             |
-| SKILL  | `skill`  | 技能执行     | skill\_drawio-skill, skill\_analysis  |
-| MCP    | `mcp`    | MCP 工具调用 | mcp\_weather, mcp\_dingtalk\_schedule |
-| PLAN   | `complex_plan` | 复杂任务编排 | complex\_plan（Planner 分解+波次调度） |
-| CHAT   | `chat`   | 通用对话     | chat（Chat Expert 润色）             |
-| SYSTEM | `system` | 系统指令     | system\_help, system\_exit            |
+| 类别     | 枚举值            | 说明       | 示例                                    |
+| ------ | -------------- | -------- | ------------------------------------- |
+| RAG    | `rag`          | 知识库检索    | rag\_exams, rag\_politics             |
+| SKILL  | `skill`        | 技能执行     | skill\_drawio-skill, skill\_analysis  |
+| MCP    | `mcp`          | MCP 工具调用 | mcp\_weather, mcp\_dingtalk\_schedule |
+| PLAN   | `complex_plan` | 复杂任务编排   | complex\_plan（Planner 分解+波次调度）        |
+| CHAT   | `chat`         | 通用对话     | chat（Chat Expert 润色）                  |
+| SYSTEM | `system`       | 系统指令     | system\_help, system\_exit            |
 
 ### 多意图识别
 
@@ -306,18 +326,18 @@ factory.py 初始化流程:
 
 ### 节点说明
 
-| 节点                    | 职责   | 说明                               |
-| --------------------- | ---- | -------------------------------- |
-| `feeling_detect`      | 情绪检测 | 检测用户情绪，动态更新 Prompt               |
-| `intent_recognize`    | 意图识别 | 识别用户意图，支持多意图识别（L1关键词+L3 LLM）     |
-| `supervisor`          | 路由分发 | 重置状态 + 声明式路由，单意图直接路由，混合意图 Send 并行 |
-| `planner_decompose`   | 任务分解 | LLM 结构化输出分解复杂任务为 PlannedSubtask 列表 |
-| `planner_dispatch`    | 波次调度 | 独立子任务并行 Send，依赖子任务按波次串行 |
-| `mcp_expert`          | MCP 执行 | ReAct 循环完成 MCP 工具选择和参数提取 |
-| `skill_expert`        | 技能执行 | ReAct 循环完成技能选择和参数提取 |
-| `rag_expert`          | RAG 检索 | ReAct 循环完成知识库选择、检索和生成 |
-| `chat_expert`         | 对话生成 | 通用对话，RefinerRegistry 润色 |
-| `merge`               | 结果合并 | 合并所有 Expert 结果，LLM 润色生成最终回答 |
+| 节点                  | 职责     | 说明                                          |
+| ------------------- | ------ | ------------------------------------------- |
+| `feeling_detect`    | 情绪检测   | 检测用户情绪，动态更新 Prompt                          |
+| `intent_recognize`  | 意图识别   | 识别用户意图，支持多意图识别（L1关键词+L3 LLM）                |
+| `supervisor`        | 统一路由   | 重置状态 + 统一路由到 planner_decompose               |
+| `planner_decompose` | 任务分解   | 可执行意图直接构建子任务 + complex_plan LLM 独立分解，合并为统一列表 |
+| `planner_dispatch`  | 波次调度   | 独立子任务并行 Send，依赖子任务按波次串行，循环直到全部完成            |
+| `mcp_expert`        | MCP 执行 | ReAct 循环完成 MCP 工具选择和参数提取                    |
+| `skill_expert`      | 技能执行   | ReAct 循环完成技能选择和参数提取                         |
+| `rag_expert`        | RAG 检索 | ReAct 循环完成知识库选择、检索和生成                       |
+| `chat_expert`       | 对话生成   | 通用对话，只生成纯内容，润色由 MergeNode 统一处理              |
+| `merge`             | 结果合并   | 合并所有 Expert 结果，LLM 润色生成最终回答                 |
 
 ### 思考步骤枚举（Step）
 
@@ -332,18 +352,18 @@ writer(Step.FEELING_DETECT.completed_event(detail="积极 (8)"))
 
 枚举成员：
 
-| Step 成员            | step 标识           | 显示名称   | 图标  |
-| -------------------- | ------------------ | ------ | --- |
-| `FEELING_DETECT`     | `feeling_detect`   | 情绪分析   | 😊  |
-| `INTENT_RECOGNIZE`   | `intent_recognize` | 意图识别   | 🎯  |
-| `SUPERVISOR`         | `supervisor`       | 路由分发   | 🔀  |
-| `PLANNER_DECOMPOSE`  | `planner_decompose`| 任务分解   | �  |
-| `PLANNER_DISPATCH`   | `planner_dispatch` | 波次调度   | �  |
-| `MCP_EXPERT`         | `mcp_expert`       | MCP 执行  | ⚙️  |
-| `SKILL_EXPERT`       | `skill_expert`     | 技能执行   | 🎨  |
-| `RAG_EXPERT`         | `rag_expert`       | 知识检索   | 📚  |
-| `CHAT_EXPERT`        | `chat_expert`      | 对话生成   | 🤖  |
-| `MERGE`              | `merge`            | 结果合并   | ✅  |
+| Step 成员             | step 标识             | 显示名称   | 图标 |
+| ------------------- | ------------------- | ------ | -- |
+| `FEELING_DETECT`    | `feeling_detect`    | 情绪分析   | 😊 |
+| `INTENT_RECOGNIZE`  | `intent_recognize`  | 意图识别   | 🎯 |
+| `SUPERVISOR`        | `supervisor`        | 路由分发   | 🔀 |
+| `PLANNER_DECOMPOSE` | `planner_decompose` | 任务分解   | �  |
+| `PLANNER_DISPATCH`  | `planner_dispatch`  | 波次调度   | �  |
+| `MCP_EXPERT`        | `mcp_expert`        | MCP 执行 | ⚙️ |
+| `SKILL_EXPERT`      | `skill_expert`      | 技能执行   | 🎨 |
+| `RAG_EXPERT`        | `rag_expert`        | 知识检索   | 📚 |
+| `CHAT_EXPERT`       | `chat_expert`       | 对话生成   | 🤖 |
+| `MERGE`             | `merge`             | 结果合并   | ✅  |
 
 ### 多 Agent 协作架构（Phase 3）
 
@@ -355,30 +375,26 @@ Phase 3 在 Phase 2 专家架构基础上，新增 Planner 编排能力，并彻
 2. **LLM-in-the-loop**：参数提取由 LLM 完成，不手动拼装参数
 3. **Orchestrator-Worker 模式**：Planner 分解复杂任务为子任务，波次调度并行/串行执行
 4. **意图即上下文**：将意图信息作为 Agent 输入的上下文提示，避免其他类别意图污染
+5. **统一 Planner 路由**：所有意图统一路由到 planner_decompose，Planner 内部区分可执行/复杂规划意图
 
 #### Expert 节点说明
 
-| Expert | 类别 | 工具集 | 说明 |
-| ------ | ---- | ------ | ---- |
-| `mcp_expert` | MCP | MCP 动态工具 + mcp_execute 兜底 | ReAct 循环选工具→提参→执行 |
-| `skill_expert` | Skill | Skill 动态工具 + skill_execute 兜底 | ReAct 循环选技能→提参→执行 |
-| `rag_expert` | RAG | knowledge_search + knowledge_generate | ReAct 循环选知识库→检索→生成 |
-| `planner_expert` | Plan | planner_decompose + planner_dispatch | LLM 分解→波次调度→Expert 执行 |
-| `chat_expert` | Chat | 无工具（RefinerRegistry 润色） | 直接对话 + 润色 |
+| Expert           | 类别    | 工具集                                     | 说明                          |
+| ---------------- | ----- | --------------------------------------- | --------------------------- |
+| `mcp_expert`     | MCP   | MCP 动态工具 + mcp\_execute 兜底              | ReAct 循环选工具→提参→执行           |
+| `skill_expert`   | Skill | Skill 动态工具 + skill\_execute 兜底          | ReAct 循环选技能→提参→执行           |
+| `rag_expert`     | RAG   | knowledge\_search + knowledge\_generate | ReAct 循环选知识库→检索→生成          |
+| `chat_expert`    | Chat  | 无工具（纯内容生成，润色由 MergeNode 统一处理）           | 直接对话                        |
 
-#### 路由策略
+#### 统一 Planner 路由策略
 
-Supervisor 通过 `SUPERVISOR_ROUTE_TABLE` 声明式路由，优先级：
+Supervisor 统一路由所有意图到 `planner_decompose`，由 Planner 内部区分处理：
 
-1. 无意图 → `chat_expert`
-2. COMPLEX_PLAN 意图 → `planner_decompose`（LLM 分解 + 波次调度）
-3. 纯单类别意图 → 对应 Expert
-4. 混合可执行意图 → Send API 并行分发到多个 Expert
-5. 对话意图 → `chat_expert`
+1. **可执行意图**（mcp/skill/rag/chat/system）→ 直接构建子任务，不调 LLM，单波次完成
+2. **complex_plan 意图** → 每个 complex_plan 独立调用 LLM 分解，保留完整规划能力
+3. **混合意图** → 可执行直接构建 + complex_plan LLM 分解，合并后统一波次调度
 
 #### Planner 编排流程
-
-COMPLEX_PLAN 意图走 Planner 分解+调度路径：
 
 ```
 用户输入: "帮我设计一个技术方案并画架构图"
@@ -387,10 +403,10 @@ COMPLEX_PLAN 意图走 Planner 分解+调度路径：
 intent_recognize → [complex_plan]
         │
         ▼
-supervisor → planner_decompose
+supervisor → planner_decompose（统一路由）
         │
         ▼
-LLM 结构化分解 → PlannedSubtask 列表
+LLM 独立分解 complex_plan → PlannedSubtask 列表
   ├── [0] 查询技术方案模板 (rag, depends_on=[])
   ├── [1] 生成技术方案文档 (skill, depends_on=[0])
   └── [2] 画架构图 (skill, depends_on=[])
@@ -402,41 +418,34 @@ planner_dispatch → 波次调度
   └── 全部完成 → merge
 ```
 
-#### 并行执行
+#### 混合意图处理
 
-混合意图场景下，Supervisor 使用 LangGraph Send API 将意图按类别分组，并行分发到多个 Expert：
+混合意图场景下，Planner 将可执行意图直接构建子任务 + complex_plan LLM 分解，合并后统一波次调度：
 
 ```
-用户输入: "查杭州天气，画架构图"
+用户输入: "查杭州天气，创建一个在线表格应用"
         │
         ▼
-intent_recognize → [mcp:weather, skill:drawio]
+intent_recognize → [mcp:weather, complex_plan]
         │
         ▼
-supervisor → classify_intents → 混合可执行意图
+supervisor → planner_decompose（统一路由）
         │
-        ├── Send(mcp_expert, {intents: [mcp:weather]})
-        └── Send(skill_expert, {intents: [skill:drawio]})
-              │                    │
-              ▼                    ▼
-        mcp_expert           skill_expert
-        (并行执行)            (并行执行)
-              │                    │
-              └────────┬───────────┘
-                       ▼
-                    merge → LLM 润色 → 最终回答
+        ├── 可执行意图直接构建（不调 LLM）：
+        │     [0] mcp: 查杭州天气    depends_on: []
+        │
+        ├── complex_plan LLM 独立分解：
+        │     [1] chat: 分析核心需求   depends_on: []
+        │     [2] chat: 设计数据模型    depends_on: [1]
+        │     [3] chat: 整合开发计划    depends_on: [2]
+        │
+        ▼
+planner_dispatch → 波次调度
+  ├── 波次1: Send(mcp_expert, [0]) + Send(chat_expert, [1])  ← 并行
+  ├── 波次2: Send(chat_expert, [2])
+  ├── 波次3: Send(chat_expert, [3])
+  └── 全部完成 → merge
 ```
-
-#### Feature Flag
-
-| 环境变量 | 说明 | 默认值 |
-| -------- | ---- | ------ |
-| `MULTI_AGENT_ENABLED` | 多 Agent 模式总开关 | false |
-| `MULTI_AGENT_MCP_EXPERT_ENABLED` | MCP Expert 开关 | true |
-| `MULTI_AGENT_SKILL_EXPERT_ENABLED` | Skill Expert 开关 | true |
-| `MULTI_AGENT_RAG_EXPERT_ENABLED` | RAG Expert 开关 | true |
-| `MULTI_AGENT_PLANNER_EXPERT_ENABLED` | Planner Expert 开关 | true |
-| `MULTI_AGENT_PARALLEL_ENABLED` | 并行执行开关 | false |
 
 ## 模块化 RAG 框架
 
@@ -1023,13 +1032,13 @@ Content-Type: application/json
 
 **事件类型**（`EventType` 枚举）：
 
-| 事件类型                 | 说明       | 字段                              |
-| -------------------- | -------- | --------------------------------- |
-| `STEP_STARTED`       | 步骤开始     | step, label, icon                 |
-| `STEP_FINISHED`      | 步骤完成     | step, label, icon, detail         |
-| `TEXT_MESSAGE_CONTENT` | 文本内容流式输出 | content, node                     |
-| `RUN_FINISHED`       | 运行完成     | answer, feeling, session_id       |
-| `RUN_ERROR`          | 运行错误     | error                             |
+| 事件类型                   | 说明       | 字段                           |
+| ---------------------- | -------- | ---------------------------- |
+| `STEP_STARTED`         | 步骤开始     | step, label, icon            |
+| `STEP_FINISHED`        | 步骤完成     | step, label, icon, detail    |
+| `TEXT_MESSAGE_CONTENT` | 文本内容流式输出 | content, node                |
+| `RUN_FINISHED`         | 运行完成     | answer, feeling, session\_id |
+| `RUN_ERROR`            | 运行错误     | error                        |
 
 **多流模式**（LangGraph）：
 
@@ -1157,15 +1166,15 @@ RetrieverFactory.register("my_retriever", MyRetriever)
 
 ### 前端
 
-| 类别       | 技术                  | 版本    | 说明         |
-| -------- | ------------------- | ----- | ---------- |
-| UI 框架    | React               | 18.2  | 组件化 UI     |
-| 构建工具     | Vite                | 5.0+  | 快速构建       |
-| 状态管理     | Zustand             | 5.0+  | 轻量状态管理     |
-| HTTP 请求  | Axios               | 1.16+ | API 请求     |
-| PDF 预览   | react-pdf           | 10.4+ | PDF 文件预览   |
-| Word 预览  | mammoth-plus-plus-2 | 1.7+  | Word 文件预览  |
-| Excel 预览 | exceljs             | 4.4+  | Excel 文件预览 |
+| 类别       | 技术        | 版本    | 说明         |
+| -------- | --------- | ----- | ---------- |
+| UI 框架    | React     | 18.2  | 组件化 UI     |
+| 构建工具     | Vite      | 5.0+  | 快速构建       |
+| 状态管理     | Zustand   | 5.0+  | 轻量状态管理     |
+| HTTP 请求  | Axios     | 1.16+ | API 请求     |
+| PDF 预览   | react-pdf | 10.4+ | PDF 文件预览   |
+| Word 预览  |  钉钉仓颉编辑器  | 1.7+  | Word 文件预览  |
+| Excel 预览 | 钉钉纵横 SDK  | 2.15+ | Excel 文件预览 |
 
 ### AI 服务
 

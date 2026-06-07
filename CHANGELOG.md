@@ -7,6 +7,57 @@
 
 ---
 
+## [2.0.0] - 2026-06-07
+
+### Changed
+- **统一 Planner 路由重构（核心架构变更）**
+  - Supervisor 路由简化：所有意图统一路由到 `planner_decompose`，移除多路径分支
+  - `SUPERVISOR_ROUTE_TABLE` 简化为单条规则（`condition=True → planner_expert`）
+  - `_route_from_supervisor` 始终返回 `planner_decompose`，不再根据意图类型做分支判断
+  - 移除 `_build_parallel_sends` 和 `_route_expert_after_execution` 函数
+  - Expert 执行后固定边回到 `planner_dispatch`，不再条件路由
+  - 移除 `SUPERVISOR_ROUTE_TARGETS` 中除 `planner_decompose` 外的所有条目
+- **Planner 内部区分处理**
+  - `EXECUTABLE_CATEGORIES` 扩展为 `{mcp, skill, rag, chat, system}`
+  - 可执行意图（mcp/skill/rag/chat/system）→ 直接构建子任务，不调 LLM，单波次完成
+  - complex_plan 意图 → 每个 complex_plan 独立调用 LLM 分解，保留完整规划能力（零降级）
+  - 混合意图 → 可执行直接构建 + complex_plan LLM 分解，合并后统一波次调度
+- **chat/system 意图映射**
+  - `_build_subtasks_from_intents` 将 chat/system 映射为 `chat` 类别子任务
+  - `_group_intents_by_category` 合并 chat 和 system 到 `chat` 分组
+- **MergeNode 适配统一路由**
+  - 移除 `is_planner_flow` 判断（统一路由后所有结果都有 subtask_idx）
+  - 新增 `_refine_single_chat` 方法，单个 chat_expert 结果也走 LLM 润色
+- **chat_expert 调用方式修复**
+  - `_generate_subtask_content` 修复 `Assistant.invoke` 调用方式：从 dict 参数改为 `(input: str, context: AgentContext)`
+  - 修复取值 key：`response.get("output")` → `result.get("answer")`
+  - 移除已失效的 Supervisor 直接调度路径（RefinerRegistry 润色），统一由 MergeNode 润色
+- **chat_refiner.py 调用方式修复**
+  - 同步修复 `Assistant.invoke` 调用方式和取值 key
+- **graph.py 清理**
+  - 移除 `from langgraph.types import Send`（未使用）
+  - 移除 `resolve_route`、`classify_intents`、`SUPERVISOR_ROUTE_TABLE` import
+  - `_route_from_supervisor` 简化为直接提取类别信息做日志
+
+### Added
+- **Expert 异常保护**
+  - mcp_expert、rag_expert、skill_expert、chat_expert 全部新增 try/except 异常捕获
+  - `DataInspectionFailed`（内容安全审查）返回友好提示
+  - 其他异常返回错误信息摘要，日志输出完整错误详情（不裁剪）
+
+### Removed
+- `MULTI_AGENT_PARALLEL_ENABLED` Feature Flag（统一路由后并行由 Planner 波次调度自动处理，不再需要独立开关）
+- `_build_parallel_sends` 函数（Supervisor 不再直接并行分发）
+- `_route_expert_after_execution` 函数（Expert 固定边回到 planner_dispatch）
+- chat_subgraph 中 Supervisor 直接调度路径（RefinerRegistry 润色分支）
+
+### Fixed
+- **chat_expert 返回 dict 字符串**：`Assistant.invoke` 传 dict 导致 LLM 收到混乱输入，返回 `{'answer': '...', 'intermediate_steps': [], ...}` 原始 dict 字符串。修复后返回纯文本回答
+- **chat_expert 重复第一轮回答**：dict 被当作 input 字符串传入，包含第一轮完整对话历史，LLM 直接复述。修复后 chat_history 走正规通道，LLM 能正确区分历史和当前问题
+- **MergeNode 单 chat 结果跳过润色**：统一路由后 chat_expert 只生成纯内容，但 MergeNode 对单个 chat_expert 结果直接取 answer 跳过润色。修复后也走 LLM 润色
+
+---
+
 ## [1.9.0] - 2026-06-07
 
 ### Added
@@ -440,6 +491,18 @@
 - 自定义 reducer（add_agent_results、keep_last）
 - Feature Flag 细粒度控制
 
+### Phase 4: Unified Planner Routing (2026-06-07)
+- **统一 Planner 路由重构**
+- Supervisor 统一路由所有意图到 planner_decompose
+- 可执行意图直接构建子任务（不调 LLM）
+- complex_plan LLM 独立分解（完整规划能力零降级）
+- 混合意图合并后统一波次调度
+- Expert 执行后固定边回到 planner_dispatch
+- 移除 Supervisor 直接调度和并行分发路径
+- 移除 `MULTI_AGENT_PARALLEL_ENABLED` Feature Flag
+- Expert 异常保护（内容安全审查友好提示）
+- chat_expert 调用方式修复（Assistant.invoke 参数和取值 key）
+
 ---
 
 ## Key Features
@@ -470,10 +533,10 @@
 - 支持数据分析、绘图、旅行规划
 
 ### 6. 多 Agent 协作
-- Supervisor 声明式路由（SUPERVISOR_ROUTE_TABLE）
-- 5 个领域专精 Expert（MCP / Skill / RAG / Planner / Chat）
-- Send API 并行分发
-- Planner 分解+波次调度（Orchestrator-Worker 模式）
+- 统一 Planner 路由：所有意图 → planner_decompose
+- 可执行意图直接构建子任务 + complex_plan LLM 独立分解
+- Planner 波次调度（Orchestrator-Worker 模式）
+- 4 个领域专精 Expert（MCP / Skill / RAG / Chat）
 - Merge 节点统一润色
 
 ### 7. 智能任务规划

@@ -23,8 +23,8 @@ class BaseExpertNode:
         """
         获取 Planner 调度标记的子任务索引
 
-        当 Expert 由 Planner 通过 Send API 调度时，state 中会携带 __subtask_idx__。
-        此索引用于 planner_dispatch 节点追踪子任务完成状态。
+        统一 Planner 路由后，所有 Expert 均由 Planner 通过 Send API 调度，
+        state 中必定携带 __subtask_idx__。
 
         Args:
             state: 当前状态
@@ -61,7 +61,7 @@ class BaseExpertNode:
         # 2. 构建状态更新字典（将写入 LangGraph State）
         result = {}
 
-        # 3. 获取 Planner 调度标记：非 None 表示由 Planner 波次调度，None 表示由 Supervisor 直接调度
+        # 3. 获取 Planner 调度标记：统一 Planner 路由后，__subtask_idx__ 必定存在
         subtask_idx = self._get_subtask_idx(state)
         if subtask_idx is not None:
             # 标记1：写入 agent_results 条目，供 MergeNode 按子任务顺序排列结果
@@ -72,9 +72,8 @@ class BaseExpertNode:
 
         # 5. 回传调度标记到 State 顶层
         if subtask_idx is not None:
-            # 标记2：供 _route_expert_after_execution 判断路由方向
-            #   - 有 __subtask_idx__ → Planner 调度 → 回到 planner_dispatch 继续波次调度
-            #   - 无 __subtask_idx__ → Supervisor 调度 → 直接去 merge 汇总
+            # 回传 __subtask_idx__，供 planner_dispatch 收集已完成子任务索引
+            # 统一 Planner 路由后，所有 Expert 执行后都回到 planner_dispatch
             result["__subtask_idx__"] = subtask_idx
 
         return result

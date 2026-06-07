@@ -29,7 +29,6 @@ class Step(Enum):
     SKILL_EXPERT = ("skill_expert", "技能执行 Agent", "🎨")
     MCP_EXPERT = ("mcp_expert", "工具调用 Agent", "🔧")
     CHAT_EXPERT = ("chat_expert", "对话 Agent", "💬")
-    PLANNER_EXPERT = ("planner_expert", "任务规划 Agent", "📋")
     PLANNER_DECOMPOSE = ("planner_decompose", "任务分解", "📋")
     PLANNER_DISPATCH = ("planner_dispatch", "任务调度", "🔀")
     MERGE = ("merge", "结果整合", "🔗")

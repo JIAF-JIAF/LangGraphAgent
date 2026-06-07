@@ -13,7 +13,7 @@ Merge 节点
   - 所有 Expert Subgraph 将结果写入 agent_results（operator.add reducer）
   - Merge 节点是所有 Expert 的汇聚点，确保回答质量一致
   - 使用 ai_client 直接调用 LLM 润色，不经过 Agent ReAct 循环
-  - Chat Expert 已自行润色，Merge 直接取其 answer
+  - Chat Expert 只生成纯内容（不润色），Merge 统一润色
 """
 
 from typing import Dict, Any, List, Optional
@@ -72,14 +72,12 @@ class MergeNode:
     使用纯 LLM（无工具）润色，避免 Agent ReAct 循环中的工具幻觉。
     """
 
-    def __init__(self, ai_client=None, refiners: Optional[List] = None):
+    def __init__(self, ai_client=None):
         """
         Args:
             ai_client: AIClient 实例（纯 LLM，用于润色，不绑定工具）
-            refiners: 润色器实例列表（保留兼容，实际不再使用）
         """
         self._ai_client = ai_client
-        self._refiners = refiners or []
 
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -98,16 +96,14 @@ class MergeNode:
         writer(Step.MERGE.started_event())
         log(f"[MergeNode] 合并 {len(agent_results)} 个 Expert 结果", "MultiAgent")
 
-        # 判断是否来自 Planner 分解的子任务（有 subtask_idx 标记）
-        is_planner_flow = any(ar.get("subtask_idx") is not None for ar in agent_results)
-
-        if len(agent_results) == 1 and agent_results[0].get("agent") == "chat_expert" and not is_planner_flow:
-            # 单个 chat_expert 结果（Supervisor 直接调度），直接使用（已润色）
-            answer = agent_results[0].get("answer", "")
-            log(f"[MergeNode] Chat Expert 直接结果: {answer[:50]}...", "MultiAgent")
-        elif len(agent_results) > 1 or is_planner_flow:
-            # 多个子任务结果（Planner 分解），用 LLM 整合润色（保留详细内容）
-            # 无论是否全部为 chat_expert，都走整合润色路径
+        # 统一 Planner 路由后，所有 Expert 结果都带有 subtask_idx
+        # chat_expert 只生成纯内容（不润色），需要由 MergeNode 统一润色
+        if len(agent_results) == 1 and agent_results[0].get("agent") == "chat_expert":
+            # 单个 chat_expert 结果，需要润色（chat_expert 只生成了纯内容）
+            answer = self._refine_single_chat(query, agent_results[0], state)
+            log(f"[MergeNode] 单个 Chat Expert 结果润色完成", "MultiAgent")
+        elif len(agent_results) > 1:
+            # 多个子任务结果，用 LLM 整合润色（保留详细内容）
             answer = self._merge_and_refine_subtasks(query, agent_results, state)
             log(f"[MergeNode] 子任务结果整合润色: {answer[:50]}...", "MultiAgent")
         else:
@@ -131,6 +127,29 @@ class MergeNode:
             "intent_results": self._collect_intent_results(agent_results),
             "chat_history": ContextBuilder.build_chat_history(query, answer),
         }
+
+    def _refine_single_chat(
+        self, query: str, agent_result: Dict[str, Any], state: Dict[str, Any]
+    ) -> str:
+        """
+        润色单个 chat_expert 结果
+
+        统一 Planner 路由后，chat_expert 只生成纯内容（不润色），
+        需要由 MergeNode 统一润色，保证回答质量一致。
+
+        Args:
+            query: 用户原始查询
+            agent_result: 单个 chat_expert 结果
+            state: 当前状态
+
+        Returns:
+            润色后的回答
+        """
+        raw_answer = agent_result.get("answer", "")
+        if not raw_answer:
+            return ""
+
+        return self._refine_with_llm(query, raw_answer, state)
 
     def _merge_and_refine_subtasks(
         self, query: str, agent_results: List[Dict[str, Any]], state: Dict[str, Any]

@@ -10,13 +10,11 @@ LangGraph Agent - 主入口
 - agent.py：主入口，负责组件初始化和图编译
 - nodes/：前置节点（feeling_detect, intent_recognize）
 - multi_agent/：多 Agent 协作模块（Supervisor, Expert, Planner, Merge）
-- refiners/：润色器（Chat Expert 的 Supervisor 直接调度路径使用）
 """
 
 from typing import Optional, Dict, Any
 from modules.logger import log
 from .states import AgentState
-from .refiners import RefinerRegistry
 from .multi_agent.graph import MultiAgentGraphBuilder
 
 
@@ -73,9 +71,6 @@ class LangGraphAgent:
         self._ai_client = ai_client
         self._skill_manager = skill_manager
         self._graph = None
-        
-        # 构建精炼器（用于 Chat Expert 的 Supervisor 直接调度路径润色）
-        self._refiners = RefinerRegistry.build_all()
 
         # 构建图
         self._build_graph()
@@ -86,7 +81,6 @@ class LangGraphAgent:
             feeling_detector=self._feeling_detector,
             intent_router=self._intent_router,
             agent=self._agent,
-            refiners=self._refiners,
             rag_workflow=self._rag_workflow,
             task_planner=self._task_planner,
             ai_client=self._ai_client,

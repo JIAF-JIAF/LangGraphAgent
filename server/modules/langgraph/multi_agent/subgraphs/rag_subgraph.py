@@ -65,8 +65,16 @@ class RAGExpertNode(BaseExpertNode):
             feeling=state.get("feeling", {}),
         )
 
-        result = self._agent.invoke(input_text, agent_context)
-        answer = result.get("answer", "")
+        try:
+            result = self._agent.invoke(input_text, agent_context)
+            answer = result.get("answer", "")
+        except Exception as e:
+            error_msg = str(e)
+            log(f"[RAGExpert] LLM 调用异常: {error_msg}", "MultiAgent")
+            if "DataInspectionFailed" in error_msg or "inappropriate content" in error_msg.lower():
+                answer = "抱歉，该话题的内容触发了平台内容安全审查，暂无法提供回答，请尝试其他问题。"
+            else:
+                answer = f"知识库查询过程中出现异常：{error_msg}，请稍后重试。"
 
         intent_results = [
             {

@@ -74,8 +74,16 @@ class MCPExpertNode(BaseExpertNode):
             feeling=state.get("feeling", {}),
         )
 
-        result = self._agent.invoke(input_text, agent_context)
-        answer = result.get("answer", "")
+        try:
+            result = self._agent.invoke(input_text, agent_context)
+            answer = result.get("answer", "")
+        except Exception as e:
+            error_msg = str(e)
+            log(f"[MCPExpert] LLM 调用异常: {error_msg}", "MultiAgent")
+            if "DataInspectionFailed" in error_msg or "inappropriate content" in error_msg.lower():
+                answer = "抱歉，该操作触发了平台内容安全审查，暂无法处理，请尝试其他请求。"
+            else:
+                answer = f"工具调用过程中出现异常：{error_msg[:100]}，请稍后重试。"
 
         intent_results = [
             {
