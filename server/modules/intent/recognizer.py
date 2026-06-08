@@ -114,24 +114,19 @@ class IntentRecognizer:
         - "什么是量子力学" → chat（简单问答，LLM 直接回答）
         - "帮我写一首诗" → chat（简单创作，LLM 直接回答）
 
-        ⚠️ 重要：优先匹配可用意图列表中的具体意图
-        - 当用户请求可以被可用意图列表中的某个具体意图处理时，必须选择该意图，不要归为 complex_plan
-        - 例如：如果可用意图中有 mcp_get_weather_recommendation，"适合去哪玩"应识别为 mcp_get_weather_recommendation，而不是 complex_plan
-        - 只有当用户请求确实无法被任何可用意图处理，且需要多步骤执行时，才归为 complex_plan
+        ⚠️ 重要：意图匹配优先级
+        - 判断顺序：先判断请求性质（是否需要多步骤执行），再匹配具体意图
+        - 优先级：skill > mcp > rag > complex_plan > chat > system
+        - 当可用意图列表中有能处理该请求的具体意图时，必须选择该意图
+        - 例如：可用意图中有 skill_drawio-skill，"帮我画个流程图" → skill_drawio-skill（不是 complex_plan）
+        - 例如：可用意图中有 mcp_get_weather_recommendation，"适合去哪玩" → mcp_get_weather_recommendation（不是 complex_plan）
 
-        complex_plan vs chat 的核心区分：
-        - complex_plan：需要多步骤执行，涉及创建/开发/设计/构建等动作，无法一步完成
-        - chat：LLM 可以直接回答的问题，包括闲聊、问答、简单创作
-
-        ⚠️ 重要：以下关键词出现时，必须归类为 complex_plan，不要归类为 chat：
-        - 创建 + 应用/系统/项目/工具/平台/网站
-        - 开发 + 应用/系统/项目/工具/平台/网站
-        - 设计 + 方案/架构/系统/流程
-        - 构建 + 应用/系统/项目
-        - 实现 + 功能/系统/应用
-        - 搭建 + 环境/系统/平台
-        例如："创建在线表格应用" → complex_plan（创建应用，需要多步骤实现）
-        例如："开发一个管理系统" → complex_plan（开发系统，需要多步骤实现）
+        complex_plan 的判断标准（主动判断，不是兜底）：
+        - 用户请求涉及"创建/开发/设计/构建/实现/搭建"等动作，且目标是"应用/系统/项目/平台/网站/方案/架构"等复杂产物
+        - 需要拆分为多个子任务，无法通过单个 skill/mcp/rag 意图一步完成
+        - 例如："创建在线表格应用" → complex_plan（创建应用，需要多步骤实现）
+        - 例如："开发一个管理系统" → complex_plan（开发系统，需要多步骤实现）
+        - 例如："设计微服务架构方案" → complex_plan（设计方案，需要多步骤规划）
 
         请返回 JSON 格式（不要包含其他内容）：
         {{

@@ -7,6 +7,34 @@
 
 ---
 
+## [2.0.1] - 2026-06-08
+
+### Changed
+- **意图注册插件化**
+  - `IntentRegistry` 移除 `register_from_mcp_tools` / `register_from_skills` / `register_from_knowledge_bases` 三个特定方法
+  - 只保留 `register_intent` 通用接口，新增 Expert 无需修改 IntentRegistry
+  - 各插件在 `register_intents()` 中直接调用 `register_intent()` 逐个注册意图
+  - `ChatPlugin.register_intents()` 主动注册 `CHAT_INTENTS` + `SYSTEM_INTENTS`，不再由 IntentRegistry 硬编码
+  - `IntentRegistry._register_system_intents()` 只保留 `complex_plan` 框架级意图
+- **意图识别 Prompt 优化**
+  - `complex_plan` 意图不再从 `get_intent_descriptions()` 中过滤，暴露给 LLM
+  - Prompt 中明确 `complex_plan` 是主动判断而非兜底选项
+  - 新增优先级规则：先判断请求性质，再匹配具体意图
+- **可执行类别动态化**
+  - 移除 `models.py` 中的 `EXECUTABLE_CATEGORIES` 硬编码常量
+  - `PluginRegistry` 新增 `build_executable_categories()` 方法，从已注册插件的 `meta.category` 动态构建
+  - `ExecutableIntentDecomposer` 和 `PlannerDecomposeNode` 改为从 `plugin_registry` 动态获取类别
+- **任务分解逻辑独立**
+  - 新增 `ExecutableIntentDecomposer`（`planner/executable_intent_decomposer.py`）：可执行意图规则映射分解
+  - `PlannerDecomposeNode` 重构为纯编排者，委托分解逻辑给 `ExecutableIntentDecomposer` 和 `ComplexPlanDecomposer`
+  - 共享数据模型 `TaskDecomposition` / `PlannedSubtask` 移至 `planner/models.py`，解决循环导入
+
+### Fixed
+- `SkillPlugin` 和 `RAGPlugin` 缺少 `IntentCategory` 导入，导致意图注册失败
+- `get_intent_descriptions()` 过滤所有 system 类别意图，导致 skill/rag 意图不出现在 LLM Prompt 中
+
+---
+
 ## [2.1.0] - 2026-06-08
 
 ### Changed
@@ -662,5 +690,5 @@ This project is licensed under the MIT License.
 
 ---
 
-**Last Updated**: 2026-06-07  
-**Current Version**: 1.9.0
+**Last Updated**: 2026-06-08  
+**Current Version**: 2.0.1

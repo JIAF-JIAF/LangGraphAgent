@@ -64,11 +64,33 @@ class PluginRegistry:
         激活所有插件
 
         Args:
-            context: 共享资源上下文（ai_client, rag_workflow, skill_manager 等）
+            context: 共享资源上下文（ai_client, base_agent 等）
         """
         for plugin in self._plugins.values():
             plugin.on_activate(context)
             log(f"[PluginRegistry] 激活: {plugin.meta.name}", "Plugin")
+
+    def register_intents(self, intent_registry: Any) -> int:
+        """
+        遍历所有插件，向意图注册表注册意图
+
+        必须在 activate_all 之后调用，因为插件需要先创建资源
+        （如 SkillManager、RAGWorkflow）才能知道有哪些意图可注册。
+
+        Args:
+            intent_registry: IntentRegistry 实例
+
+        Returns:
+            注册的意图总数
+        """
+        total = 0
+        for plugin in self._plugins.values():
+            count = plugin.register_intents(intent_registry)
+            total += count
+            if count > 0:
+                log(f"[PluginRegistry] {plugin.meta.name} 注册 {count} 个意图", "Plugin")
+        log(f"[PluginRegistry] 意图注册完成，共 {total} 个", "Plugin")
+        return total
 
     # ===== 框架集成：图注册 =====
 
@@ -134,6 +156,24 @@ class PluginRegistry:
         return targets
 
     # ===== 框架集成：Planner 能力描述 =====
+
+    def build_executable_categories(self) -> set:
+        """
+        从已注册插件动态构建可执行意图类别集合
+
+        替代原 models.py 中的硬编码：
+          EXECUTABLE_CATEGORIES = {"mcp", "skill", "rag", "chat", "system"}
+
+        新增 Expert 插件时，只要 meta.category 设置正确，
+        此方法自动包含新类别，无需修改任何框架代码。
+
+        Returns:
+            {"mcp", "skill", "rag", "chat", ...}（由插件 meta.category 决定）
+        """
+        categories = set()
+        for plugin in self._plugins.values():
+            categories.add(plugin.meta.category)
+        return categories
 
     def build_capability_descriptions(self) -> str:
         """

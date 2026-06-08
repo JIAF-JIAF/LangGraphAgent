@@ -1,9 +1,14 @@
 """
 Chat Expert 插件
 
-处理简单闲聊、问候、简单问答等对话意图。
+处理简单闲聊、问候、简单问答等对话意图，以及系统指令（帮助、退出等）。
 统一 Planner 路由后，chat_expert 始终由 Planner 通过 Send API 调度，
 只生成纯内容，润色和整合由 MergeNode 统一处理。
+
+插件化职责：
+  - on_activate: 使用外部注入的通用 Agent
+  - register_intents: 注册 chat 和 system 意图（system 意图路由到 chat_expert 处理）
+  - execute: 执行对话生成
 """
 
 from typing import Dict, Any, List
@@ -15,6 +20,7 @@ from modules.langgraph.multi_agent.helpers import (
     build_base_context,
     inject_no_tool_hint,
 )
+from modules.intent.intent_types import IntentCategory, IntentConstants
 
 
 class ChatPlugin(ExpertPlugin):
@@ -50,6 +56,43 @@ class ChatPlugin(ExpertPlugin):
         """
         self._agent = context.get("base_agent")
         log("[ChatPlugin] 使用外部 Agent", "Plugin")
+
+    def register_intents(self, intent_registry) -> int:
+        """
+        注册 chat 和 system 意图
+
+        system 意图（帮助、退出等）路由到 chat_expert 处理，
+        与 chat 意图统一由本插件管理。
+
+        Args:
+            intent_registry: IntentRegistry 实例
+
+        Returns:
+            注册的意图数量
+        """
+        count = 0
+
+        # 注册 chat 意图
+        for intent_type, description in IntentConstants.CHAT_INTENTS.items():
+            intent_registry.register_intent(
+                intent_type=intent_type,
+                category=IntentCategory.CHAT,
+                description=description,
+                target="chat",
+            )
+            count += 1
+
+        # 注册 system 意图（路由到 chat_expert 处理）
+        for intent_type, description in IntentConstants.SYSTEM_INTENTS.items():
+            intent_registry.register_intent(
+                intent_type=intent_type,
+                category=IntentCategory.SYSTEM,
+                description=description,
+                target="system",
+            )
+            count += 1
+
+        return count
 
     def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """

@@ -67,6 +67,21 @@ class ExpertPlugin(ABC):
         """停用回调，释放资源"""
         pass
 
+    def register_intents(self, intent_registry: Any) -> int:
+        """
+        向意图注册表注册本插件能处理的意图
+
+        默认实现：不注册任何意图（返回 0）。
+        子类可覆写，根据自身能力注册细粒度意图。
+
+        Args:
+            intent_registry: IntentRegistry 实例
+
+        Returns:
+            注册的意图数量
+        """
+        return 0
+
     def render_capability(self) -> str:
         """
         渲染能力描述（用于 Planner DECOMPOSE_PROMPT）

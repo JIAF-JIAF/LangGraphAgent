@@ -3,12 +3,15 @@ MCP Expert 插件
 
 处理 MCP 工具调用意图。使用领域专精 Agent（只绑定 MCP 工具），
 LLM-in-the-loop 自动完成参数提取和工具选择。
+
+插件化职责：
+  - on_activate: 创建 MCP Agent
+  - register_intents: 从 MCP 工具注册意图
+  - execute: 执行 MCP 工具调用
 """
 
-import re
 from typing import Dict, Any, List
 
-from langchain_core.tools import BaseTool
 from modules.logger import log
 from modules.langgraph.multi_agent.meta import ExpertMeta
 from modules.langgraph.multi_agent.plugin_base import ExpertPlugin
@@ -21,6 +24,8 @@ from modules.langgraph.multi_agent.helpers import (
 from modules.langgraph.multi_agent.tools.mcp_tools import get_mcp_tools, mcp_execute
 from modules.langgraph.multi_agent.expert_agent_factory import MCP_SYSTEM_PROMPT, _build_expert_prompt
 from modules.assistant import Agent
+from modules.intent.intent_types import IntentCategory
+from mcp_module import MCPToolService
 
 
 class MCPPlugin(ExpertPlugin):
@@ -62,6 +67,37 @@ class MCPPlugin(ExpertPlugin):
         prompt = _build_expert_prompt(MCP_SYSTEM_PROMPT)
         self._agent = Agent(options={"prompt": prompt, "tools": tools, "aiClient": ai_client})
         log(f"[MCPPlugin] Agent 创建完成，工具: {[t.name for t in tools]}", "Plugin")
+
+    def register_intents(self, intent_registry) -> int:
+        """
+        从 MCP 工具注册意图
+
+        直接调用 register_intent 逐个注册，不依赖 IntentRegistry 的
+        特定方法，保持插件化一致性。新增 Expert 无需修改 IntentRegistry。
+
+        Args:
+            intent_registry: IntentRegistry 实例
+
+        Returns:
+            注册的意图数量
+        """
+        try:
+            mcp_tools = MCPToolService.get_tools()
+            count = 0
+            for tool in mcp_tools:
+                intent_type = f"mcp_{tool.name}"
+                intent_registry.register_intent(
+                    intent_type=intent_type,
+                    category=IntentCategory.MCP,
+                    description=tool.description,
+                    target=f"mcp:{tool.name}",
+                    tool_name=tool.name,
+                )
+                count += 1
+            return count
+        except Exception as e:
+            log(f"[MCPPlugin] MCP 意图注册失败: {e}", "Plugin")
+            return 0
 
     def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """

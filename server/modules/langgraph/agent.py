@@ -7,10 +7,20 @@ LangGraph Agent - 主入口
 - 提供统一调用接口
 
 架构设计（插件化多 Agent 架构）：
-- agent.py：主入口，负责组件初始化、插件注册和图编译
+- agent.py：主入口，负责组件初始化、插件注册、意图注册和图编译
 - nodes/：前置节点（feeling_detect, intent_recognize）
 - multi_agent/：多 Agent 协作模块（Supervisor, Expert, Planner, Merge）
 - multi_agent/plugins/：Expert 插件目录（新增 Expert 只需添加插件）
+
+插件化架构：
+  新增 Expert 只需：
+    1. 继承 ExpertPlugin，实现 meta + execute + register_intents
+    2. registry.register(YourPlugin())
+  框架自动完成：
+    - 图注册、边连接、路由映射
+    - 意图注册
+    - 能力描述生成
+  框架代码零改动。
 """
 
 from typing import Optional, Dict, Any
@@ -19,6 +29,7 @@ from .states import AgentState
 from .multi_agent.graph import MultiAgentGraphBuilder
 from .multi_agent.plugin_registry import PluginRegistry
 from .multi_agent.plugins import MCPPlugin, SkillPlugin, RAGPlugin, ChatPlugin
+from modules.intent import IntentRegistry, IntentRouter
 
 
 class LangGraphAgent:
@@ -26,14 +37,13 @@ class LangGraphAgent:
     LangGraph Agent（插件化架构）
 
     核心功能：
-    - 调用 RAGWorkflow 处理检索逻辑（可替换）
     - 调用外部 Agent 处理对话（可替换）
     - 使用 Checkpointer 进行状态持久化（可替换）
     - 支持感情侦测，动态更新 prompt（可替换）
-    - 支持任务规划：将复杂需求拆分为子任务（可替换）
 
     插件化架构：
     - Expert 通过 PluginRegistry 动态注册
+    - 意图由插件自行注册（register_intents）
     - 新增 Expert 只需：1) 继承 ExpertPlugin  2) registry.register(YourPlugin())
     - 框架代码零改动
     """
@@ -41,49 +51,40 @@ class LangGraphAgent:
     def __init__(
         self,
         agent: Any,
-        rag_workflow: Any,
         checkpointer: Any,
         feeling_detector: Any,
-        task_planner: Any,
-        intent_router: Any = None,
         verbose: bool = True,
         ai_client: Any = None,
-        skill_manager: Any = None,
     ):
         """
         初始化 LangGraph Agent
 
         Args:
             agent: 外部 Agent 实例（可替换），需实现 invoke(query, session_id, chat_history, feeling, uid) 方法
-            rag_workflow: RAGWorkflow 实例（可替换），用于处理检索逻辑
             checkpointer: 检查点存储实例（可替换），需实现 LangGraph CheckpointSaver 接口
             feeling_detector: 感情侦测器实例（可替换），需实现 detect(text, detailed) 方法
-            task_planner: 任务规划器实例（可替换），需实现 plan(query, context) 方法
-            intent_router: 意图路由器实例（可替换），需实现 route(query) 方法
             verbose: 是否输出详细日志
-            ai_client: AI 客户端实例（用于 ExpertAgentFactory 创建领域专精 Agent）
-            skill_manager: 技能管理器实例（用于 ExpertAgentFactory 获取技能工具）
+            ai_client: AI 客户端实例（用于 Expert 创建领域专精 Agent）
         """
         self._agent = agent
-        self._rag_workflow = rag_workflow
         self._checkpointer = checkpointer
         self._feeling_detector = feeling_detector
-        self._task_planner = task_planner
-        self._intent_router = intent_router
         self._verbose = verbose
         self._ai_client = ai_client
-        self._skill_manager = skill_manager
         self._graph = None
 
-        # 初始化插件注册表
+        # 1. 初始化插件注册表（注册 + 激活）
         self._registry = self._init_plugin_registry()
 
-        # 构建图
+        # 2. 初始化意图识别系统（插件注册意图后创建 Router）
+        self._intent_router = self._init_intent_router()
+
+        # 3. 构建图
         self._build_graph()
 
     def _init_plugin_registry(self) -> PluginRegistry:
         """
-        初始化插件注册表，注册内置插件
+        初始化插件注册表，注册并激活内置插件
 
         新增 Expert 只需在此方法末尾添加一行：
             registry.register(YourPlugin())
@@ -102,13 +103,10 @@ class LangGraphAgent:
         # === 新增 Expert 在此添加 ===
         # registry.register(YourPlugin())
 
-        # 激活所有插件（创建 Agent、绑定工具）
+        # 激活所有插件（创建 Agent、绑定工具、自建依赖）
         context = {
             "ai_client": self._ai_client,
-            "rag_workflow": self._rag_workflow,
-            "skill_manager": self._skill_manager,
             "base_agent": self._agent,
-            "task_planner": self._task_planner,
         }
         registry.activate_all(context)
 
@@ -116,6 +114,31 @@ class LangGraphAgent:
         log(f"插件注册完成，已激活: {registered}", "LangGraph")
 
         return registry
+
+    def _init_intent_router(self) -> IntentRouter:
+        """
+        初始化意图路由器
+
+        先让插件注册业务意图，再创建 IntentRouter。
+        必须在 _init_plugin_registry 之后调用。
+
+        Returns:
+            IntentRouter 实例
+        """
+        intent_registry = IntentRegistry()
+
+        # 插件自行注册业务意图
+        total = self._registry.register_intents(intent_registry)
+        log(f"意图注册完成，共 {total} 个业务意图", "LangGraph")
+
+        intent_router = IntentRouter(
+            llm_client=self._ai_client,
+            intent_registry=intent_registry,
+            vector_store=None,
+        )
+
+        log(f"意图识别系统初始化完成，共 {intent_registry.get_intent_count()} 个意图", "LangGraph")
+        return intent_router
 
     def _build_graph(self):
         """构建多 Agent 状态图（插件化架构）"""

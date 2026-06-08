@@ -3,12 +3,16 @@ Skill Expert 插件
 
 处理技能执行意图。使用领域专精 Agent（只绑定 Skill 工具），
 LLM-in-the-loop 自动完成技能选择和参数提取。
+
+插件化职责：
+  - on_activate: 自建 SkillManager + 创建 Skill Agent
+  - register_intents: 从技能列表注册意图
+  - execute: 执行技能调用
 """
 
 import re
 from typing import Dict, Any, List
 
-from langchain_core.tools import BaseTool
 from modules.logger import log
 from modules.langgraph.multi_agent.meta import ExpertMeta
 from modules.langgraph.multi_agent.plugin_base import ExpertPlugin
@@ -21,6 +25,8 @@ from modules.langgraph.multi_agent.helpers import (
 from modules.langgraph.multi_agent.tools.skill_tools import get_skill_tools, skill_execute
 from modules.langgraph.multi_agent.expert_agent_factory import SKILL_SYSTEM_PROMPT, _build_expert_prompt
 from modules.assistant import Agent
+from modules.skill import SkillManager
+from modules.intent.intent_types import IntentCategory
 
 
 class SkillPlugin(ExpertPlugin):
@@ -35,6 +41,7 @@ class SkillPlugin(ExpertPlugin):
             icon="🎨",
             label="技能执行 Agent",
         )
+        self._skill_manager = None
 
     @property
     def meta(self) -> ExpertMeta:
@@ -48,13 +55,20 @@ class SkillPlugin(ExpertPlugin):
 
     def on_activate(self, context: Dict[str, Any]):
         """
-        激活回调：创建 Skill 领域专精 Agent
+        激活回调：自建 SkillManager + 创建 Skill 领域专精 Agent
 
         Args:
-            context: 共享资源上下文，包含 ai_client/skill_manager 等
+            context: 共享资源上下文，包含 ai_client 等
         """
-        self._skill_manager = context.get("skill_manager")
         ai_client = context["ai_client"]
+
+        # 自建 SkillManager（依赖自治，不依赖外部注入）
+        try:
+            self._skill_manager = SkillManager(llm_client=ai_client)
+            log(f"[SkillPlugin] SkillManager 创建完成", "Plugin")
+        except Exception as e:
+            log(f"[SkillPlugin] SkillManager 创建失败: {e}", "Plugin")
+            self._skill_manager = None
 
         tools = get_skill_tools(self._skill_manager) if self._skill_manager else []
         if not tools:
@@ -64,6 +78,46 @@ class SkillPlugin(ExpertPlugin):
         prompt = _build_expert_prompt(SKILL_SYSTEM_PROMPT)
         self._agent = Agent(options={"prompt": prompt, "tools": tools, "aiClient": ai_client})
         log(f"[SkillPlugin] Agent 创建完成，工具: {[t.name for t in tools]}", "Plugin")
+
+    def register_intents(self, intent_registry) -> int:
+        """
+        从技能列表注册意图
+
+        直接调用 register_intent 逐个注册，不依赖 IntentRegistry 的
+        特定方法，保持插件化一致性。新增 Expert 无需修改 IntentRegistry。
+
+        Args:
+            intent_registry: IntentRegistry 实例
+
+        Returns:
+            注册的意图数量
+        """
+        if not self._skill_manager:
+            log("[SkillPlugin] SkillManager 不可用，跳过意图注册", "Plugin")
+            return 0
+
+        try:
+            skills = self._skill_manager.list_skills()
+            count = 0
+            for skill in skills:
+                skill_name = skill.get("name", "")
+                if not skill_name:
+                    continue
+
+                intent_type = f"skill_{skill_name}"
+                intent_registry.register_intent(
+                    intent_type=intent_type,
+                    category=IntentCategory.SKILL,
+                    description=skill.get("description", f"执行 {skill_name} 技能"),
+                    target=f"skill:{skill_name}",
+                    skill_name=skill_name,
+                    examples=skill.get("examples", []),
+                )
+                count += 1
+            return count
+        except Exception as e:
+            log(f"[SkillPlugin] 技能意图注册失败: {e}", "Plugin")
+            return 0
 
     def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -124,6 +178,6 @@ class SkillPlugin(ExpertPlugin):
         Returns:
             能力描述文本，包含当前可用技能列表
         """
-        tools = get_skill_tools(self._skill_manager) if hasattr(self, '_skill_manager') and self._skill_manager else []
+        tools = get_skill_tools(self._skill_manager) if self._skill_manager else []
         skill_names = ", ".join([t.name for t in tools]) if tools else "无"
         return f"skill: 技能执行。当前可用技能：{skill_names}"
