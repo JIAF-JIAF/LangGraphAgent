@@ -48,14 +48,14 @@ class ExecutableIntentDecomposer:
             子任务列表
         """
         executable_categories = self._plugin_registry.build_executable_categories()
-        category_data = self._group_intents_by_category(intents, executable_categories)
+        alias_map = self._plugin_registry.build_route_alias_map()
+        category_data = self._group_intents_by_category(intents, executable_categories, alias_map)
 
         subtasks = []
         for cat, data in category_data.items():
-            subtask_category = "chat" if cat in ("chat", "system") else cat
             subtasks.append({
                 "description": "；".join(data["contents"]),
-                "category": subtask_category,
+                "category": cat,
                 "depends_on": [],
                 "targets": data["targets"],
             })
@@ -64,16 +64,21 @@ class ExecutableIntentDecomposer:
         return subtasks
 
     @staticmethod
-    def _group_intents_by_category(intents: List[Dict[str, Any]], executable_categories: set) -> Dict[str, Dict[str, Any]]:
+    def _group_intents_by_category(
+        intents: List[Dict[str, Any]],
+        executable_categories: set,
+        alias_map: Dict[str, str],
+    ) -> Dict[str, Dict[str, Any]]:
         """
         按类别分组可执行意图
 
         同一类别的意图合并为一条记录，保留 contents 和 targets 列表。
-        chat 和 system 意图合并到同一组（统一由 chat_expert 处理）。
+        路由别名通过 alias_map 解析（如 system → chat）。
 
         Args:
             intents: 可执行意图列表
             executable_categories: 从插件注册表动态获取的可执行类别集合
+            alias_map: 路由别名映射（如 {"system": "chat"}）
 
         Returns:
             {category: {"contents": [...], "targets": [...]}}
@@ -82,7 +87,8 @@ class ExecutableIntentDecomposer:
 
         for intent in intents:
             cat = intent.get("category", "")
-            group_key = "chat" if cat in ("chat", "system") else cat
+            # 通过别名映射解析（替代硬编码的 if cat == "system"）
+            group_key = alias_map.get(cat, cat)
 
             if group_key not in executable_categories:
                 continue

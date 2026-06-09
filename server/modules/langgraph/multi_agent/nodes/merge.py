@@ -72,12 +72,14 @@ class MergeNode:
     使用纯 LLM（无工具）润色，避免 Agent ReAct 循环中的工具幻觉。
     """
 
-    def __init__(self, ai_client=None):
+    def __init__(self, ai_client=None, plugin_registry=None):
         """
         Args:
             ai_client: AIClient 实例（纯 LLM，用于润色，不绑定工具）
+            plugin_registry: PluginRegistry 实例（用于获取默认回退 Expert 名称）
         """
         self._ai_client = ai_client
+        self._plugin_registry = plugin_registry
 
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -97,8 +99,9 @@ class MergeNode:
         log(f"[MergeNode] 合并 {len(agent_results)} 个 Expert 结果", "MultiAgent")
 
         # 统一 Planner 路由后，所有 Expert 结果都带有 subtask_idx
-        # chat_expert 只生成纯内容（不润色），需要由 MergeNode 统一润色
-        if len(agent_results) == 1 and agent_results[0].get("agent") == "chat_expert":
+        # 默认回退 Expert（通常是 chat_expert）只生成纯内容（不润色），需要由 MergeNode 统一润色
+        default_expert_name = self._get_default_expert_name()
+        if len(agent_results) == 1 and agent_results[0].get("agent") == default_expert_name:
             # 单个 chat_expert 结果，需要润色（chat_expert 只生成了纯内容）
             answer = self._refine_single_chat(query, agent_results[0], state)
             log(f"[MergeNode] 单个 Chat Expert 结果润色完成", "MultiAgent")
@@ -132,14 +135,14 @@ class MergeNode:
         self, query: str, agent_result: Dict[str, Any], state: Dict[str, Any]
     ) -> str:
         """
-        润色单个 chat_expert 结果
+        润色单个默认回退 Expert 结果
 
-        统一 Planner 路由后，chat_expert 只生成纯内容（不润色），
+        统一 Planner 路由后，默认回退 Expert 只生成纯内容（不润色），
         需要由 MergeNode 统一润色，保证回答质量一致。
 
         Args:
             query: 用户原始查询
-            agent_result: 单个 chat_expert 结果
+            agent_result: 单个 Expert 结果
             state: 当前状态
 
         Returns:
@@ -150,6 +153,20 @@ class MergeNode:
             return ""
 
         return self._refine_with_llm(query, raw_answer, state)
+
+    def _get_default_expert_name(self) -> str:
+        """
+        获取默认回退 Expert 名称
+
+        从 PluginRegistry 的 Manifest 获取，
+        替代硬编码的 "chat_expert"。
+
+        Returns:
+            默认回退 Expert 名称
+        """
+        if self._plugin_registry:
+            return self._plugin_registry.get_default_fallback_expert_name()
+        return "chat_expert"
 
     def _merge_and_refine_subtasks(
         self, query: str, agent_results: List[Dict[str, Any]], state: Dict[str, Any]

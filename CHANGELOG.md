@@ -7,6 +7,66 @@
 
 ---
 
+## [2.1.0] - 2026-06-09
+
+### Added
+- **Manifest 驱动架构（核心架构演进）**
+  - 新增 `manifest.py`：PLUGIN.yaml 解析器 + 数据类定义
+    - `PluginManifest`：插件顶层配置（name / description / version / expert / routing / intents / prompt）
+    - `ExpertConfig`：Expert 元信息配置（category / icon / label / priority）
+    - `RoutingConfig`：路由配置（target_format / target_prefix / aliases / default_fallback）
+    - `IntentConfig`：意图配置（dynamic / static）
+    - `PromptConfig`：Prompt 模板配置（capability_template / single_hint / multi_hint）
+  - 每个 Expert 插件目录新增 `PLUGIN.yaml` 声明式配置文件
+    - `plugins/mcp_plugin/PLUGIN.yaml`：MCP Expert 配置
+    - `plugins/skill_plugin/PLUGIN.yaml`：Skill Expert 配置
+    - `plugins/rag_plugin/PLUGIN.yaml`：RAG Expert 配置
+    - `plugins/chat_plugin/PLUGIN.yaml`：Chat Expert 配置
+  - 插件目录结构标准化：`plugins/{plugin_name}/plugin.py` + `plugins/{plugin_name}/PLUGIN.yaml`
+
+### Changed
+- **ExpertPlugin 基类改造**
+  - 构造函数接受 `PluginManifest` 参数，自动生成 `ExpertMeta`
+  - `register_intents()` 从 Manifest 的 `intents.static` 自动注册静态意图
+  - `render_capability()` 使用 Manifest 的 `prompt.capability_template` 渲染能力描述
+- **PluginRegistry 增强**
+  - 新增 `build_route_alias_map()`：构建路由别名映射（如 `system → chat`）
+  - 新增 `get_default_fallback_category()`：获取默认回退类别（从 Manifest 的 `routing.default_fallback`）
+  - 新增 `get_default_fallback_expert_name()`：获取默认回退 Expert 名称
+  - 新增 `build_target_format_descriptions()`：动态生成 target 格式描述（替代硬编码）
+  - 新增 `build_category_options()`：动态生成类别选项列表
+- **Planner Prompt 动态化**
+  - `DECOMPOSE_PROMPT` 移除硬编码的 target 格式描述和类别选项
+  - 改为 `{target_format_descriptions}` 和 `{category_options}` 动态变量
+  - `models.py` 新增 `build_planned_subtask_model()` 和 `build_task_decomposition_model()` 动态注入 Field 描述
+- **路由逻辑动态化**
+  - `executable_intent_decomposer.py`：路由别名解析改用 `build_route_alias_map()`
+  - `dispatch.py`：默认回退类别改用 `get_default_fallback_category()`
+  - `merge.py`：默认回退 Expert 名称改用 `get_default_fallback_expert_name()`
+- **插件加载方式统一**
+  - `plugins/__init__.py` 新增 `create_builtin_plugins()` 工厂函数
+  - 从各插件目录的 `PLUGIN.yaml` 加载 Manifest 并创建插件实例
+  - `agent.py` 改用 `create_builtin_plugins()` 替代手动注册
+
+### Removed
+- 旧插件文件（移至子目录）
+  - `plugins/mcp_plugin.py` → `plugins/mcp_plugin/plugin.py`
+  - `plugins/skill_plugin.py` → `plugins/skill_plugin/plugin.py`
+  - `plugins/rag_plugin.py` → `plugins/rag_plugin/plugin.py`
+  - `plugins/chat_plugin.py` → `plugins/chat_plugin/plugin.py`
+- 硬编码配置
+  - `prompts.py` 中 4 行 target 格式硬编码
+  - `prompts.py` 中 "mcp/skill/rag/chat" 类别硬编码
+  - `models.py` 中 Field 描述硬编码
+  - `dispatch.py` 中默认回退类别 `"mcp"` 硬编码
+  - `merge.py` 中默认回退 Expert `"chat_expert"` 硬编码
+
+### Fixed
+- **`_build_expert_state` 使用 `self` 但不是类方法**：改为参数传入 `plugin_registry`
+- **Merge 润色 Prompt 去重不够强**：加强去重规则为"最高优先级"
+
+---
+
 ## [2.0.1] - 2026-06-08
 
 ### Changed

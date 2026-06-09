@@ -1,0 +1,24 @@
+name: skill_expert
+description: 技能执行（画图、数据分析、文档生成等）。当用户需要执行特定技能时使用。
+version: "1.0.0"
+
+expert:
+  category: skill
+  icon: 🎨
+  label: 技能执行 Agent
+  priority: 100
+
+routing:
+  target_format: "skill:{skill_name}"
+  target_prefix: "skill:"
+  aliases: {}
+  default_fallback: false
+
+intents:
+  dynamic: true
+  static: []
+
+prompt:
+  capability_template: "skill: {description}。当前可用技能：{tools}"
+  single_hint: "请使用 {target} 技能完成以下任务"
+  multi_hint: "请完成以下技能任务："

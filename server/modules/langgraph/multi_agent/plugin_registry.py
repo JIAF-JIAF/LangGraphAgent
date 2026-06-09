@@ -4,11 +4,15 @@
 核心职责：管理插件生命周期，并提供框架集成接口。
 新增 Expert 只需：写插件类 → registry.register(plugin) → 框架自动完成图注册。
 
-解决的 3 个硬编码问题：
+Manifest 驱动架构解决的硬编码问题：
 1. graph.add_node / add_edge → register_graph_nodes()
 2. CATEGORY_EXPERT_MAP → build_category_map()
 3. PLANNER_DISPATCH_TARGETS → build_dispatch_targets()
 4. DECOMPOSE_PROMPT 能力描述 → build_capability_descriptions()
+5. 路由别名映射 → build_route_alias_map()
+6. 默认回退类别 → get_default_fallback_category()
+7. target 格式描述 → build_target_format_descriptions()
+8. 类别选项 → build_category_options()
 """
 
 from typing import Dict, Any, List, Optional
@@ -198,6 +202,105 @@ class PluginRegistry:
             lines.append(plugin.render_capability())
             seen_categories.add(cat)
         return "\n".join(lines)
+
+    # ===== 框架集成：Manifest 驱动路由 =====
+
+    def build_route_alias_map(self) -> Dict[str, str]:
+        """
+        构建路由别名映射
+
+        从各插件的 Manifest routing.aliases 合并。
+        替代硬编码的 if cat == "system": cat = "chat" 逻辑。
+
+        Returns:
+            {"system": "chat", ...}（别名 → 目标类别）
+        """
+        alias_map: Dict[str, str] = {}
+        for plugin in self._plugins.values():
+            for alias, target in plugin.manifest.routing.aliases.items():
+                alias_map[alias] = target
+        return alias_map
+
+    def get_default_fallback_category(self) -> str:
+        """
+        获取默认回退类别
+
+        从 Manifest routing.default_fallback=true 的插件获取。
+        替代硬编码的 default "mcp" / "chat"。
+
+        Returns:
+            默认回退类别字符串，无则返回 "chat"
+        """
+        for plugin in self._plugins.values():
+            if plugin.manifest.routing.default_fallback:
+                return plugin.meta.category
+        return "chat"
+
+    def get_default_fallback_expert_name(self) -> str:
+        """
+        获取默认回退 Expert 名称
+
+        Returns:
+            默认回退 Expert 名称，无则返回 "chat_expert"
+        """
+        for plugin in self._plugins.values():
+            if plugin.manifest.routing.default_fallback:
+                return plugin.meta.name
+        return "chat_expert"
+
+    def build_target_format_descriptions(self) -> str:
+        """
+        构建 target 格式描述文本
+
+        从各插件的 Manifest routing.target_format 生成，
+        用于 DECOMPOSE_PROMPT 中的 targets 字段填写规则。
+
+        替代硬编码的：
+          "- skill 类别 → ["skill:技能ID"]"
+          "- mcp 类别 → ["mcp:工具名"]"
+          ...
+
+        Returns:
+            target 格式描述文本
+        """
+        lines = []
+        seen_categories = set()
+
+        for plugin in sorted(self._plugins.values(), key=lambda p: p.meta.priority):
+            cat = plugin.meta.category
+            if cat in seen_categories:
+                continue
+
+            target_format = plugin.manifest.routing.target_format
+            if target_format:
+                lines.append(f"- {cat} 类别 → [\"{target_format}\"]")
+            else:
+                lines.append(f"- {cat} 类别 → 留空 []")
+
+            seen_categories.add(cat)
+
+        return "\n".join(lines)
+
+    def build_category_options(self) -> str:
+        """
+        构建类别选项文本
+
+        从已注册插件的 category 动态生成，
+        用于 DECOMPOSE_PROMPT 和 Pydantic Field 描述。
+
+        替代硬编码的 "mcp/skill/rag/chat"。
+
+        Returns:
+            类别选项文本，如 "mcp、skill、rag 或 chat"
+        """
+        categories = sorted(self.build_executable_categories())
+        if not categories:
+            return "chat"
+
+        if len(categories) == 1:
+            return categories[0]
+
+        return "、".join(categories[:-1]) + " 或 " + categories[-1]
 
     # ===== 查询 =====
 

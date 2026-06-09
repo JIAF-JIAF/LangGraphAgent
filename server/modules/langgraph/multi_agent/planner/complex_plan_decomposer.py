@@ -12,7 +12,7 @@ Complex Plan 分解器
 from typing import Dict, Any, List, Optional
 from modules.logger import log
 from modules.langgraph.multi_agent.planner.prompts import DECOMPOSE_PROMPT
-from modules.langgraph.multi_agent.planner.models import TaskDecomposition
+from modules.langgraph.multi_agent.planner.models import TaskDecomposition, build_task_decomposition_model
 
 
 class ComplexPlanDecomposer:
@@ -78,14 +78,20 @@ class ComplexPlanDecomposer:
             TaskDecomposition 实例，失败返回 None
         """
         capability_descriptions = self._plugin_registry.build_capability_descriptions()
+        target_format_descriptions = self._plugin_registry.build_target_format_descriptions()
+        category_options = self._plugin_registry.build_category_options()
         prompt = DECOMPOSE_PROMPT.format(
             query=query,
             capability_descriptions=capability_descriptions,
+            target_format_descriptions=target_format_descriptions,
+            category_options=category_options,
         )
 
         try:
+            # 动态构建模型（注入 Manifest 驱动的 Field 描述）
+            dynamic_model = build_task_decomposition_model(category_options, target_format_descriptions)
             structured_llm = self._ai_client.chat.with_structured_output(
-                TaskDecomposition, method="json_mode"
+                dynamic_model, method="json_mode"
             )
             return structured_llm.invoke(prompt)
         except Exception as e:

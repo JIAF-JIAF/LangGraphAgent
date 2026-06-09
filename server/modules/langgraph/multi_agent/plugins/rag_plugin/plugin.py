@@ -4,16 +4,13 @@ RAG Expert 插件
 处理知识库检索意图。使用领域专精 Agent（只绑定 RAG 工具），
 LLM-in-the-loop 自动完成知识库选择、检索和答案生成。
 
-插件化职责：
-  - on_activate: 自建 RAGWorkflow + 创建 RAG Agent
-  - register_intents: 从知识库注册意图
-  - execute: 执行知识库检索
+Manifest 驱动：routing/prompt/intents 从 PLUGIN.yaml 加载，
+消除硬编码，新增 Expert 无需修改框架代码。
 """
 
 from typing import Dict, Any, List
 
 from modules.logger import log
-from modules.langgraph.multi_agent.meta import ExpertMeta
 from modules.langgraph.multi_agent.plugin_base import ExpertPlugin
 from modules.langgraph.multi_agent.helpers import (
     filter_intents_by_category,
@@ -31,26 +28,15 @@ from modules.intent.intent_types import IntentCategory
 class RAGPlugin(ExpertPlugin):
     """知识库检索插件"""
 
-    def __init__(self):
-        """初始化 RAG 插件"""
-        self._meta = ExpertMeta(
-            name="rag_expert",
-            category="rag",
-            description="知识库检索（考试题库、政治理论等）",
-            icon="📚",
-            label="知识检索 Agent",
-        )
+    def __init__(self, manifest):
+        """
+        初始化 RAG 插件
+
+        Args:
+            manifest: PluginManifest 实例，从 PLUGIN.yaml 加载
+        """
+        super().__init__(manifest)
         self._rag_workflow = None
-
-    @property
-    def meta(self) -> ExpertMeta:
-        """
-        插件元信息
-
-        Returns:
-            ExpertMeta 实例，包含 name/category/description/icon/label
-        """
-        return self._meta
 
     def on_activate(self, context: Dict[str, Any]):
         """
@@ -84,8 +70,8 @@ class RAGPlugin(ExpertPlugin):
         """
         从知识库注册意图
 
-        直接调用 register_intent 逐个注册，不依赖 IntentRegistry 的
-        特定方法，保持插件化一致性。新增 Expert 无需修改 IntentRegistry。
+        动态意图注册：从知识库列表逐个注册。
+        静态意图由基类自动注册（Manifest intents.static）。
 
         Args:
             intent_registry: IntentRegistry 实例
@@ -93,13 +79,16 @@ class RAGPlugin(ExpertPlugin):
         Returns:
             注册的意图数量
         """
+        # 先注册 Manifest 中的静态意图
+        count = super().register_intents(intent_registry)
+
+        # 再注册动态意图
         if not self._rag_workflow:
             log("[RAGPlugin] RAGWorkflow 不可用，跳过意图注册", "Plugin")
-            return 0
+            return count
 
         try:
             knowledge_bases = self._rag_workflow.get_available_knowledge_bases()
-            count = 0
             for kb_info in knowledge_bases:
                 kb_name = kb_info.get("name", "")
                 if not kb_name:
@@ -118,7 +107,7 @@ class RAGPlugin(ExpertPlugin):
             return count
         except Exception as e:
             log(f"[RAGPlugin] 知识库意图注册失败: {e}", "Plugin")
-            return 0
+            return count
 
     def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -131,12 +120,14 @@ class RAGPlugin(ExpertPlugin):
             状态更新字典，包含 agent_results
         """
         query = state["query"]
-        intents = filter_intents_by_category(state.get("intents", []), "rag")
+        intents = filter_intents_by_category(state.get("intents", []), self.meta.category)
+
+        # 从 Manifest 获取 prompt 模板
         input_text = build_hints_input(
             query, intents,
-            target_prefix="knowledge_base:",
-            single_hint="请在 {target} 知识库中检索以下内容",
-            multi_hint="请检索以下内容：",
+            target_prefix=self.manifest.routing.target_prefix,
+            single_hint=self.manifest.prompt.single_hint,
+            multi_hint=self.manifest.prompt.multi_hint,
         )
 
         log(f"[RAGPlugin] 处理 RAG 意图: {len(intents)} 个, 输入: {input_text[:50]}...", "Plugin")
@@ -145,18 +136,25 @@ class RAGPlugin(ExpertPlugin):
         answer = self._invoke_agent(self._agent, input_text, context)
         log(f"[RAGPlugin] 完成: {answer[:50]}...", "Plugin")
 
-        intent_results = build_intent_results(intents, answer, "rag")
+        intent_results = build_intent_results(intents, answer, self.meta.category)
         return self._build_result(answer, state, intent_results=intent_results)
 
     def render_capability(self) -> str:
         """
         渲染能力描述（用于 Planner DECOMPOSE_PROMPT）
 
+        使用 Manifest 的 capability_template 模板。
+
         Returns:
             能力描述文本，包含当前可用知识库列表
         """
         if not self._rag_workflow:
-            return "rag: 知识库检索（当前不可用）"
+            return f"{self.meta.category}: {self.meta.description}（当前不可用）"
         tools = create_rag_tools(self._rag_workflow)
         kb_names = ", ".join([t.name for t in tools]) if tools else "无"
-        return f"rag: 知识库检索。当前可用知识库：{kb_names}"
+        template = self.manifest.prompt.capability_template
+        return template.format(
+            category=self.meta.category,
+            description=self.meta.description,
+            tools=kb_names,
+        )

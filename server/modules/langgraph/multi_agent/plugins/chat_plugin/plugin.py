@@ -5,47 +5,31 @@ Chat Expert 插件
 统一 Planner 路由后，chat_expert 始终由 Planner 通过 Send API 调度，
 只生成纯内容，润色和整合由 MergeNode 统一处理。
 
-插件化职责：
-  - on_activate: 使用外部注入的通用 Agent
-  - register_intents: 注册 chat 和 system 意图（system 意图路由到 chat_expert 处理）
-  - execute: 执行对话生成
+Manifest 驱动：routing/prompt/intents 从 PLUGIN.yaml 加载，
+静态意图（chat + system）由基类自动注册，无需手写。
 """
 
 from typing import Dict, Any, List
 
 from modules.logger import log
-from modules.langgraph.multi_agent.meta import ExpertMeta
 from modules.langgraph.multi_agent.plugin_base import ExpertPlugin
 from modules.langgraph.multi_agent.helpers import (
     build_base_context,
     inject_no_tool_hint,
 )
-from modules.intent.intent_types import IntentCategory, IntentConstants
 
 
 class ChatPlugin(ExpertPlugin):
     """对话生成插件"""
 
-    def __init__(self):
-        """初始化 Chat 插件"""
-        self._meta = ExpertMeta(
-            name="chat_expert",
-            category="chat",
-            description="简单对话处理（闲聊、问候、简单问答）",
-            icon="💬",
-            label="对话 Agent",
-            priority=50,
-        )
-
-    @property
-    def meta(self) -> ExpertMeta:
+    def __init__(self, manifest):
         """
-        插件元信息
+        初始化 Chat 插件
 
-        Returns:
-            ExpertMeta 实例，包含 name/category/description/icon/label/priority
+        Args:
+            manifest: PluginManifest 实例，从 PLUGIN.yaml 加载
         """
-        return self._meta
+        super().__init__(manifest)
 
     def on_activate(self, context: Dict[str, Any]):
         """
@@ -59,10 +43,10 @@ class ChatPlugin(ExpertPlugin):
 
     def register_intents(self, intent_registry) -> int:
         """
-        注册 chat 和 system 意图
+        注册意图
 
-        system 意图（帮助、退出等）路由到 chat_expert 处理，
-        与 chat 意图统一由本插件管理。
+        静态意图（chat + system）由基类从 Manifest 自动注册，
+        无需手写。此方法直接调用 super()。
 
         Args:
             intent_registry: IntentRegistry 实例
@@ -70,29 +54,7 @@ class ChatPlugin(ExpertPlugin):
         Returns:
             注册的意图数量
         """
-        count = 0
-
-        # 注册 chat 意图
-        for intent_type, description in IntentConstants.CHAT_INTENTS.items():
-            intent_registry.register_intent(
-                intent_type=intent_type,
-                category=IntentCategory.CHAT,
-                description=description,
-                target="chat",
-            )
-            count += 1
-
-        # 注册 system 意图（路由到 chat_expert 处理）
-        for intent_type, description in IntentConstants.SYSTEM_INTENTS.items():
-            intent_registry.register_intent(
-                intent_type=intent_type,
-                category=IntentCategory.SYSTEM,
-                description=description,
-                target="system",
-            )
-            count += 1
-
-        return count
+        return super().register_intents(intent_registry)
 
     def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -123,12 +85,3 @@ class ChatPlugin(ExpertPlugin):
 
         # Chat 特有：无 intent_results
         return self._build_result(answer, state)
-
-    def render_capability(self) -> str:
-        """
-        渲染能力描述（用于 Planner DECOMPOSE_PROMPT）
-
-        Returns:
-            能力描述文本
-        """
-        return "chat: 简单对话（闲聊、问候、简单问答，LLM 直接回答即可）"

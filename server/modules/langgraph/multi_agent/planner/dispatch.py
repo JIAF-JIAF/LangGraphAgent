@@ -102,7 +102,10 @@ class PlannerDispatchNode:
         Returns:
             Send 对象，Expert 不可用时返回 None
         """
-        category = subtask.get("category", "mcp")
+        category = subtask.get("category", "")
+        if not category:
+            category = self._plugin_registry.get_default_fallback_category()
+        
         category_map = self._plugin_registry.build_category_map()
         expert_name = category_map.get(category)
 
@@ -110,7 +113,13 @@ class PlannerDispatchNode:
             log(f"[PlannerDispatch] 子任务[{idx}] 跳过: 无匹配 Expert（category={category}）", "MultiAgent")
             return None
 
-        expert_state = _build_expert_state(subtask, idx, state, completed_results)
+        expert_state = _build_expert_state(
+            subtask, 
+            idx, 
+            state, 
+            completed_results, 
+            self._plugin_registry
+        )
 
         log(f"[PlannerDispatch] 子任务[{idx}] → {expert_name}: {expert_state['intents'][0]['content'][:40]}...", "MultiAgent")
         return Send(expert_name, expert_state)
@@ -176,7 +185,7 @@ def _collect_completed_results(agent_results: List[Dict[str, Any]]) -> Dict[int,
     return results
 
 
-def _build_expert_state(subtask: Dict[str, Any], idx: int, state: Dict[str, Any], completed_results: Dict[int, str]) -> Dict[str, Any]:
+def _build_expert_state(subtask: Dict[str, Any], idx: int, state: Dict[str, Any], completed_results: Dict[int, str], plugin_registry) -> Dict[str, Any]:
     """
     构建 Expert 专属 state
 
@@ -187,14 +196,17 @@ def _build_expert_state(subtask: Dict[str, Any], idx: int, state: Dict[str, Any]
         idx: 子任务全局索引
         state: 当前全局状态
         completed_results: 已完成子任务的回答映射
+        plugin_registry: PluginRegistry 实例
 
     Returns:
         Expert 专属 state 字典
     """
-    category = subtask.get("category", "mcp")
+    category = subtask.get("category", "")
+    if not category:
+        category = plugin_registry.get_default_fallback_category()
     description = subtask["description"]
 
-    expert_intents = _restore_intents_from_subtask(subtask, category)
+    expert_intents = _restore_intents_from_subtask(subtask, category, plugin_registry)
 
     deps = subtask.get("depends_on", [])
     if deps:
@@ -209,7 +221,7 @@ def _build_expert_state(subtask: Dict[str, Any], idx: int, state: Dict[str, Any]
     return expert_state
 
 
-def _restore_intents_from_subtask(subtask: Dict[str, Any], category: str) -> List[Dict[str, Any]]:
+def _restore_intents_from_subtask(subtask: Dict[str, Any], category: str, plugin_registry) -> List[Dict[str, Any]]:
     """
     从子任务恢复意图列表
 
@@ -220,11 +232,21 @@ def _restore_intents_from_subtask(subtask: Dict[str, Any], category: str) -> Lis
     Args:
         subtask: 子任务字典
         category: 子任务类别
+        plugin_registry: PluginRegistry 实例，用于获取 target_prefix
 
     Returns:
         意图列表
     """
     targets = subtask.get("targets", [])
+
+    # 从 Manifest 获取 target_prefix
+    category_map = plugin_registry.build_category_map()
+    expert_name = category_map.get(category)
+    target_prefix = ""
+    if expert_name:
+        plugin = plugin_registry.get_plugin(expert_name)
+        if plugin:
+            target_prefix = plugin.manifest.routing.target_prefix
 
     if targets:
         contents = subtask["description"].split("；")
@@ -239,7 +261,7 @@ def _restore_intents_from_subtask(subtask: Dict[str, Any], category: str) -> Lis
     else:
         return [{
             "category": category,
-            "target": f"{category}:",
+            "target": f"{target_prefix}" if target_prefix else f"{category}:",
             "content": subtask["description"],
         }]
 

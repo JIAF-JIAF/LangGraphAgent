@@ -1,0 +1,24 @@
+name: mcp_expert
+description: 外部工具调用（天气查询、钉钉日程、消息推送等）。当用户需要调用外部API或工具时使用。
+version: "1.0.0"
+
+expert:
+  category: mcp
+  icon: 🔧
+  label: 工具调用 Agent
+  priority: 100
+
+routing:
+  target_format: "mcp:{tool_name}"
+  target_prefix: "mcp:"
+  aliases: {}
+  default_fallback: false
+
+intents:
+  dynamic: true
+  static: []
+
+prompt:
+  capability_template: "mcp: {description}。当前可用工具：{tools}"
+  single_hint: "请使用 {target} 工具完成以下任务"
+  multi_hint: "请完成以下工具调用任务："

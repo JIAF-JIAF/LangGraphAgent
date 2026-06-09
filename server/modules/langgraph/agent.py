@@ -28,7 +28,7 @@ from modules.logger import log
 from .states import AgentState
 from .multi_agent.graph import MultiAgentGraphBuilder
 from .multi_agent.plugin_registry import PluginRegistry
-from .multi_agent.plugins import MCPPlugin, SkillPlugin, RAGPlugin, ChatPlugin
+from .multi_agent.plugins import create_builtin_plugins
 from modules.intent import IntentRegistry, IntentRouter
 
 
@@ -94,14 +94,14 @@ class LangGraphAgent:
         """
         registry = PluginRegistry()
 
-        # 注册内置插件
-        registry.register(MCPPlugin())
-        registry.register(SkillPlugin())
-        registry.register(RAGPlugin())
-        registry.register(ChatPlugin())
+        # 注册内置插件（从 PLUGIN.yaml 加载 Manifest）
+        for plugin in create_builtin_plugins():
+            registry.register(plugin)
 
         # === 新增 Expert 在此添加 ===
-        # registry.register(YourPlugin())
+        # from your_plugin import YourPlugin
+        # manifest = load_manifest("path/to/your_plugin_dir")
+        # registry.register(YourPlugin(manifest))
 
         # 激活所有插件（创建 Agent、绑定工具、自建依赖）
         context = {

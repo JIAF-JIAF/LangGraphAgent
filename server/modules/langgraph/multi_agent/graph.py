@@ -110,7 +110,7 @@ class MultiAgentGraphBuilder:
         log("[MultiAgent] Planner Orchestrator-Worker 已启用", "MultiAgent")
 
         # === Merge 节点（合并所有 Expert 结果，使用纯 LLM 润色，避免工具幻觉） ===
-        merge_node = MergeNode(ai_client=self._ai_client)
+        merge_node = MergeNode(ai_client=self._ai_client, plugin_registry=self._registry)
         graph.add_node("merge", merge_node)
 
         # === 边 ===

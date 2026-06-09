@@ -4,10 +4,16 @@ Expert 插件抽象基类
 契约定义：插件必须提供 meta + execute，框架负责图注册、边连接、路由。
 插件通过 meta.category 参与意图路由，通过 meta.name 作为图节点名。
 
+Manifest 驱动架构：
+  - 插件从 PLUGIN.yaml 加载 Manifest，自动生成 ExpertMeta
+  - routing/prompt/intents 全部声明式，消除硬编码
+  - 静态意图从 Manifest 自动注册，无需子类手写
+
 新增 Expert 只需：
-  1. 继承 ExpertPlugin，实现 meta + execute
-  2. registry.register(YourPlugin())
-  3. 框架自动完成图注册、边连接、路由映射、能力描述
+  1. 创建插件目录（含 PLUGIN.yaml + plugin.py）
+  2. 继承 ExpertPlugin，传入 manifest
+  3. registry.register(YourPlugin(manifest))
+  4. 框架自动完成图注册、边连接、路由映射、能力描述
 
 框架代码零改动。
 """
@@ -15,6 +21,7 @@ Expert 插件抽象基类
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from modules.langgraph.multi_agent.meta import ExpertMeta
+from modules.langgraph.multi_agent.manifest import PluginManifest
 from modules.langgraph.multi_agent.helpers import (
     push_step_event,
     invoke_agent_safely,
@@ -22,24 +29,52 @@ from modules.langgraph.multi_agent.helpers import (
     build_agent_result,
 )
 from modules.langgraph.context_builder import ContextBuilder
+from modules.intent.intent_types import IntentCategory
 
 
 class ExpertPlugin(ABC):
     """
     Expert 插件抽象基类
 
+    Manifest 驱动架构：
+      - 构造时传入 PluginManifest，自动生成 ExpertMeta
+      - 静态意图从 Manifest 自动注册（register_intents 默认实现）
+      - render_capability 使用 Manifest 的 capability_template
+
     框架通过以下方式与插件交互：
     1. on_activate(context)  → 注入共享资源，插件创建 Agent
-    2. meta                  → 获取路由/注册信息
+    2. meta                  → 获取路由/注册信息（从 Manifest 自动生成）
     3. __call__(state)       → LangGraph 节点入口，委托给 execute()
-    4. render_capability()   → Planner Prompt 中的能力描述
+    4. render_capability()   → Planner Prompt 中的能力描述（从 Manifest 模板生成）
     """
 
+    def __init__(self, manifest: PluginManifest):
+        """
+        初始化插件
+
+        Args:
+            manifest: PluginManifest 实例，从 PLUGIN.yaml 加载
+        """
+        self._manifest = manifest
+        self._meta = ExpertMeta(
+            name=manifest.name,
+            category=manifest.expert.category,
+            description=manifest.description,
+            version=manifest.version,
+            priority=manifest.expert.priority,
+            icon=manifest.expert.icon,
+            label=manifest.expert.label or manifest.name,
+        )
+
     @property
-    @abstractmethod
+    def manifest(self) -> PluginManifest:
+        """插件 Manifest"""
+        return self._manifest
+
+    @property
     def meta(self) -> ExpertMeta:
-        """插件元信息"""
-        pass
+        """插件元信息（从 Manifest 自动生成）"""
+        return self._meta
 
     @abstractmethod
     def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -71,8 +106,9 @@ class ExpertPlugin(ABC):
         """
         向意图注册表注册本插件能处理的意图
 
-        默认实现：不注册任何意图（返回 0）。
-        子类可覆写，根据自身能力注册细粒度意图。
+        Manifest 驱动：自动注册 Manifest 中声明的静态意图。
+        子类可覆写以注册动态意图（如从 MCP 工具列表注册），
+        建议调用 super().register_intents() 保留静态意图注册。
 
         Args:
             intent_registry: IntentRegistry 实例
@@ -80,19 +116,68 @@ class ExpertPlugin(ABC):
         Returns:
             注册的意图数量
         """
-        return 0
+        count = 0
+        for intent_def in self._manifest.intents.static:
+            intent_type = intent_def.get("intent_type", "")
+            if not intent_type:
+                continue
+
+            # 从 target 推断 category
+            target = intent_def.get("target", "")
+            category_str = self._infer_category_from_target(target)
+
+            intent_registry.register_intent(
+                intent_type=intent_type,
+                category=category_str,
+                description=intent_def.get("description", ""),
+                target=target,
+            )
+            count += 1
+        return count
+
+    def _infer_category_from_target(self, target: str) -> IntentCategory:
+        """
+        从 target 推断意图类别（返回 IntentCategory 枚举）
+
+        Args:
+            target: 目标标识，如 "chat"、"system"、"mcp:get_weather"
+
+        Returns:
+            IntentCategory 枚举值
+        """
+        # 先确定 category 字符串
+        if ":" in target:
+            cat_str = target.split(":")[0]
+        else:
+            # 特殊映射：system → chat（由 Manifest routing.aliases 决定）
+            alias = self._manifest.routing.aliases.get(target)
+            if alias:
+                cat_str = alias
+            else:
+                cat_str = self._manifest.expert.category
+
+        # 映射为 IntentCategory 枚举
+        try:
+            return IntentCategory(cat_str)
+        except ValueError:
+            return IntentCategory.CHAT
 
     def render_capability(self) -> str:
         """
         渲染能力描述（用于 Planner DECOMPOSE_PROMPT）
 
-        默认返回 "- {category}: {description}"
-        子类可覆写提供更详细的能力清单
+        使用 Manifest 的 capability_template 模板，支持 {category}/{description} 占位符。
+        子类可覆写提供更详细的能力清单（如动态工具列表）。
 
         Returns:
-            能力描述文本，如 "mcp: 外部工具调用。当前可用工具：weather, dingtalk"
+            能力描述文本
         """
-        return f"- {self.meta.category}: {self.meta.description}"
+        template = self._manifest.prompt.capability_template
+        return template.format(
+            category=self.meta.category,
+            description=self.meta.description,
+            tools="",  # 子类 render_capability 覆写时填充
+        )
 
     # ===== 辅助方法（子类可复用）=====
 

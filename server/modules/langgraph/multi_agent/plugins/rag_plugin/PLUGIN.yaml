@@ -1,0 +1,24 @@
+name: rag_expert
+description: 知识库检索（考试题库、政治理论等）。当用户需要查询知识库中的信息时使用。
+version: "1.0.0"
+
+expert:
+  category: rag
+  icon: 📚
+  label: 知识检索 Agent
+  priority: 100
+
+routing:
+  target_format: "knowledge_base:{kb_name}"
+  target_prefix: "knowledge_base:"
+  aliases: {}
+  default_fallback: false
+
+intents:
+  dynamic: true
+  static: []
+
+prompt:
+  capability_template: "rag: {description}。当前可用知识库：{tools}"
+  single_hint: "请在 {target} 知识库中检索以下内容"
+  multi_hint: "请检索以下内容："

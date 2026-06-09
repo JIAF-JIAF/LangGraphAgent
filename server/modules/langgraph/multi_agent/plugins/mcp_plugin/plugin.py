@@ -4,16 +4,13 @@ MCP Expert 插件
 处理 MCP 工具调用意图。使用领域专精 Agent（只绑定 MCP 工具），
 LLM-in-the-loop 自动完成参数提取和工具选择。
 
-插件化职责：
-  - on_activate: 创建 MCP Agent
-  - register_intents: 从 MCP 工具注册意图
-  - execute: 执行 MCP 工具调用
+Manifest 驱动：routing/prompt/intents 从 PLUGIN.yaml 加载，
+消除硬编码，新增 Expert 无需修改框架代码。
 """
 
 from typing import Dict, Any, List
 
 from modules.logger import log
-from modules.langgraph.multi_agent.meta import ExpertMeta
 from modules.langgraph.multi_agent.plugin_base import ExpertPlugin
 from modules.langgraph.multi_agent.helpers import (
     filter_intents_by_category,
@@ -31,25 +28,14 @@ from mcp_module import MCPToolService
 class MCPPlugin(ExpertPlugin):
     """MCP 工具调用插件"""
 
-    def __init__(self):
-        """初始化 MCP 插件"""
-        self._meta = ExpertMeta(
-            name="mcp_expert",
-            category="mcp",
-            description="外部工具调用（天气查询、钉钉日程、消息推送等）",
-            icon="🔧",
-            label="工具调用 Agent",
-        )
-
-    @property
-    def meta(self) -> ExpertMeta:
+    def __init__(self, manifest):
         """
-        插件元信息
+        初始化 MCP 插件
 
-        Returns:
-            ExpertMeta 实例，包含 name/category/description/icon/label
+        Args:
+            manifest: PluginManifest 实例，从 PLUGIN.yaml 加载
         """
-        return self._meta
+        super().__init__(manifest)
 
     def on_activate(self, context: Dict[str, Any]):
         """
@@ -72,8 +58,8 @@ class MCPPlugin(ExpertPlugin):
         """
         从 MCP 工具注册意图
 
-        直接调用 register_intent 逐个注册，不依赖 IntentRegistry 的
-        特定方法，保持插件化一致性。新增 Expert 无需修改 IntentRegistry。
+        动态意图注册：从 MCP 工具列表逐个注册。
+        静态意图由基类自动注册（Manifest intents.static）。
 
         Args:
             intent_registry: IntentRegistry 实例
@@ -81,9 +67,12 @@ class MCPPlugin(ExpertPlugin):
         Returns:
             注册的意图数量
         """
+        # 先注册 Manifest 中的静态意图
+        count = super().register_intents(intent_registry)
+
+        # 再注册动态意图
         try:
             mcp_tools = MCPToolService.get_tools()
-            count = 0
             for tool in mcp_tools:
                 intent_type = f"mcp_{tool.name}"
                 intent_registry.register_intent(
@@ -97,7 +86,7 @@ class MCPPlugin(ExpertPlugin):
             return count
         except Exception as e:
             log(f"[MCPPlugin] MCP 意图注册失败: {e}", "Plugin")
-            return 0
+            return count
 
     def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -110,13 +99,14 @@ class MCPPlugin(ExpertPlugin):
             状态更新字典，包含 agent_results
         """
         query = state["query"]
-        intents = filter_intents_by_category(state.get("intents", []), "mcp")
+        intents = filter_intents_by_category(state.get("intents", []), self.meta.category)
 
+        # 从 Manifest 获取 prompt 模板
         input_text = build_hints_input(
             query, intents,
-            target_prefix="mcp:",
-            single_hint="请使用 {target} 工具完成以下任务",
-            multi_hint="请完成以下工具调用任务：",
+            target_prefix=self.manifest.routing.target_prefix,
+            single_hint=self.manifest.prompt.single_hint,
+            multi_hint=self.manifest.prompt.multi_hint,
         )
 
         log(f"[MCPPlugin] 处理 MCP 意图: {len(intents)} 个, 输入: {input_text[:50]}...", "Plugin")
@@ -125,16 +115,23 @@ class MCPPlugin(ExpertPlugin):
         answer = self._invoke_agent(self._agent, input_text, context)
         log(f"[MCPPlugin] 完成: {answer[:50]}...", "Plugin")
 
-        intent_results = build_intent_results(intents, answer, "mcp")
+        intent_results = build_intent_results(intents, answer, self.meta.category)
         return self._build_result(answer, state, intent_results=intent_results)
 
     def render_capability(self) -> str:
         """
         渲染能力描述（用于 Planner DECOMPOSE_PROMPT）
 
+        使用 Manifest 的 capability_template 模板。
+
         Returns:
             能力描述文本，包含当前可用工具列表
         """
         tools = get_mcp_tools()
         tool_names = ", ".join([t.name for t in tools]) if tools else "无"
-        return f"mcp: 外部工具调用。当前可用工具：{tool_names}"
+        template = self.manifest.prompt.capability_template
+        return template.format(
+            category=self.meta.category,
+            description=self.meta.description,
+            tools=tool_names,
+        )

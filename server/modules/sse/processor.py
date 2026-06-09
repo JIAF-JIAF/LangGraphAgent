@@ -101,11 +101,20 @@ class SSEEventProcessor:
 
         return None
 
+    # 只转发 merge 节点的 token（最终润色结果）
+    # - 前置节点和调度节点：中间过程，不需要展示
+    # - Expert 节点：结果会由 merge 节点统一润色后输出，避免重复
+    # - 用户通过 STEP_STARTED 事件看到各 Expert 的执行进度
+    _ALLOWED_TOKEN_NODES = frozenset({
+        "merge",
+    })
+
     def _process_token(self, chunk: tuple, session_id: str) -> dict | None:
         """
         处理 messages 流模式的 token 事件
 
-        只转发 call_model 节点的 token 输出，其他节点的 LLM 输出忽略
+        只转发 merge 节点的 token 输出（最终润色结果），
+        其他节点的 LLM 输出一律忽略，避免重复。
 
         Args:
             chunk: (AIMessageChunk, metadata) 元组
@@ -121,7 +130,7 @@ class SSEEventProcessor:
 
         node_name = metadata.get("langgraph_node", "unknown")
 
-        if node_name != "call_model":
+        if node_name not in self._ALLOWED_TOKEN_NODES:
             return None
 
         self.final_answer += content

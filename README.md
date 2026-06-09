@@ -1,126 +1,132 @@
-# 智能体框架
+# LangGraph 多 Agent 智能体框架
 
-基于 AI 的企业级智能体框架，采用前后端分离架构，集成知识库检索（RAG）、工具调用、技能系统和多轮对话能力。系统已迁移至 **LangGraph** 架构，支持状态管理和工作流编排。
+基于 LangGraph 的企业级多 Agent 智能体框架，采用 Orchestrator-Worker 编排模式，集成知识库检索（RAG）、MCP 工具调用、技能系统和多轮对话能力。支持钉钉机器人集成，提供可视化配置中心。
 
-## 核心特性
+---
 
-- **分层漏斗路由**: L1 关键词（<1ms）→ L2 向量语义 → L3 LLM 识别，80% 请求在 L1 层处理
-- **多意图识别**: 支持同时识别多个意图，如"查询行测技巧并画架构图"
-- **多 Agent 协作**: Supervisor + 4 个领域专精 Expert，统一 Planner 路由 + 波次调度
-- **插件化架构**: 基于 ExpertPlugin 抽象基类 + PluginRegistry 注册表，新增 Expert 只需添加插件，框架代码零改动
-- **Planner 编排**: Orchestrator-Worker 模式，可执行意图直接构建子任务 + complex_plan LLM 独立分解，支持跨 Expert 依赖
-- **模块化 RAG**: 可插拔的索引器、检索器、生成器，支持 ChromaDB / Milvus
-- **MCP 工具服务**: 独立部署的工具服务，支持分布式多服务器，动态添加/删除
-- **技能系统**: 基于 SKILL.md 的技能匹配和执行引擎，支持数据分析、绘图、旅行规划
-- **状态持久化**: 支持 Memory / Redis 检查点存储，实现会话状态持久化
-- **情绪感知**: 6 种情绪检测（default、upbeat、angry、cheerful、depressed、friendly），动态更新 Prompt
-- **钉钉集成**: 日程管理（创建、查询、删除）和待办事项，支持钉钉机器人
-- **可视化配置**: 前端 UI 管理知识库、MCP 工具、技能安装，支持 Word/Excel/PDF 文件预览
+## 核心功能展示
 
-## 项目结构
+![智能问答与知识库(RAG)、日程管理(MCP)、工具调用与任务规划](resources/drawnix-base.png)
 
-```
-LangGraphAgent/
-├── server/                      # Python 后端服务 (Flask)
-│   ├── app.py                   # Flask 主应用入口
-│   ├── db.py                    # 向量库管理 API
-│   ├── DingWebHook.py           # 钉钉 Webhook 入口
-│   ├── Dockerfile               # Docker 构建文件
-│   ├── docker-compose.yml       # Docker Compose 配置
-│   ├── requirements.txt         # Python 依赖
-│   ├── modules/                 # 核心功能模块
-│   │   ├── langgraph/           # LangGraph 状态图
-│   │   │   ├── agent.py         # LangGraph Agent（状态图定义）
-│   │   │   ├── state.py         # 状态定义
-│   │   │   ├── context_builder.py # 上下文构建器
-│   │   │   ├── states/          # 状态类型
-│   │   │   ├── executors/       # 执行器（责任链模式）
-│   │   │   ├── nodes/          # 节点定义
-│   │   │   ├── planner/         # 任务规划器（decompose + dispatch）
-│   │   │   ├── reflection/      # 反思校验器
-│   │   │   ├── multi_agent/     # 多 Agent 协作模块（插件化架构）
-│   │   │       ├── graph.py     # 多 Agent 主图构建器
-│   │   │       ├── states.py    # MultiAgentState（自定义 reducer）
-│   │   │       ├── plugin_base.py # ExpertPlugin 抽象基类
-│   │   │       ├── plugin_registry.py # PluginRegistry 插件注册表
-│   │   │       ├── meta.py      # ExpertMeta 数据类
-│   │   │       ├── helpers.py   # 插件公共工具函数
-│   │   │       ├── nodes/       # Supervisor + Merge 节点
-│   │   │       ├── plugins/     # 业务插件（MCP/Skill/RAG/Chat）
-│   │   │       └── planner/     # Planner 分解+调度（decompose + dispatch）
-│   │   ├── intent/              # 意图识别模块（2026-05 新增）
-│   │   │   ├── intent_types.py  # 意图类型定义
-│   │   │   ├── intent_registry.py # 意图注册表（动态注册）
-│   │   │   ├── recognizer.py    # LLM 意图识别器（L3）
-│   │   │   └ router.py          # 分层漏斗路由器（L1+L2+L3）
-│   │   ├── rag/                 # 模块化 RAG 框架
-│   │   │   ├── rag.py           # RAG 工作流核心
-│   │   │   ├── indexer/         # 索引模块（Chroma/Milvus）
-│   │   │   ├── retriever/       # 检索模块（Simple/Reranking/Filtered）
-│   │   │   ├── generator/       # 生成模块（Stuff/MapReduce/Refine）
-│   │   │   └ router/            # 路由模块（Simple/LLMRouter）
-│   │   ├── skill/               # 技能系统模块
-│   │   ├── feeling/             # 情绪感知模块
-│   │   ├── checkpoint/          # 检查点存储（Memory/Redis）
-│   │   ├── document_loaders/    # 文档加载器（PDF/Word/Excel/Text）
-│   │   ├── prompt/              # Prompt 模板管理
-│   │   ├── rate_limit/          # 限流模块
-│   │   ├── sse/                 # SSE 流式响应（AG-UI 协议）
-│   │   ├── ai_client.py         # AI 客户端（兼容 OpenAI SDK）
-│   │   ├── assistant.py         # LangChain Agent（旧版）
-│   │   ├── factory.py           # 工厂函数（组件初始化）
-│   │   └ logger.py              # 统一日志模块
-│   │   └ context.py             # AgentContext 上下文
-│   ├── mcp_module/              # MCP 模块（工具服务）
-│   │   ├── mcp_server.py        # MCP 服务器核心
-│   │   ├── mcp_service.py       # MCP 服务封装
-│   │   ├── mcp_config_manager.py # MCP 配置管理
-│   │   ├── start.py             # 启动脚本
-│   │   └ tools/                 # 工具插件目录
-│   │       ├── registry.py      # 工具注册表
-│   │       ├── weather_plugin.py # 天气查询
-│   │       ├── weather_recommend_plugin.py # 天气推荐
-│   │       ├── submit_form_plugin.py # 表单提交
-│   │       └ dingtalk/          # 钉钉工具
-│   ├── knowledge_base/          # 知识库管理模块
-│   ├── skills/                  # 技能库（SKILL.md 格式）
-│   ├── user/                    # 用户管理模块
-│   ├── api/                     # API 接口层
-│   ├── config/                  # 配置文件
-│   ├── gateway/                 # 网关配置（Nginx）
-│   └── db/                      # 向量数据库存储（Chroma）
-├── client/                       # React 前端 (Vite)
-│   ├── src/
-│   │   ├── components/          # React 组件
-│   │   ├── preview/             # 文件预览组件
-│   │   ├── stores/              # 状态管理（Zustand）
-│   │   ├── api/                 # API 接口封装
-│   │   ├── hooks/               # 自定义 Hooks
-│   │   └── constants/           # 常量定义
-│   ├── package.json
-│   ├── vite.config.js
-│   ├── Dockerfile
-│   └── nginx.conf
-├── resources/                   # 资源文件（截图）
-├── .env                         # 环境变量配置
-└── .gitignore
+#### 复杂任务规划与执行
+
+![复杂任务规划与执行](resources/drawnix-plan.png)
+
+#### 技能使用（SKILL）
+
+![技能使用展示](resources/drawnix.png)
+
+#### 配置管理界面（支持预览 Word/Excel/PDF 等文件）
+
+![配置管理界面](resources/agnet-config.png)
+
+---
+
+## 快速开始
+
+### 环境要求
+
+| 组件 | 版本要求 |
+|------|----------|
+| Python | 3.10+ |
+| Node.js | 18+ |
+| Docker | 20+ |
+| Redis | 7+ |
+
+### 安装步骤
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/your-repo/langgraph-agent.git
+cd langgraph-agent
+
+# 2. 启动后端服务（Docker Compose）
+cd server
+docker-compose up -d
+
+# 3. 安装前端依赖并启动
+cd ../client
+npm install
+npm run dev
 ```
 
-## LangGraph 架构
+### 验证安装
 
-系统已迁移至 LangGraph 架构，实现状态管理和工作流编排。
+```bash
+# 检查后端服务状态
+curl http://localhost:5000/health
 
-### 架构设计原则
+# 访问前端界面
+open http://localhost:5173
+```
 
-1. **分离图定义与业务逻辑**:
-   - `LangGraphAgent` (agent.py): 定义状态图结构（节点、边、路由）
-   - `ContextBuilder` (context\_builder.py): 构建上下文（RAG 文档、对话历史）
-   - `RAGWorkflow` (rag.py): 实现具体业务功能（检索、生成）
-2. **分离调度层与执行层**:
-   - LangGraph（调度层）：专注于流程控制
-   - LangChain Agent（执行层）：通过 tool calling 自主调用工具
-3. **状态持久化**: 通过检查点（Checkpoint）机制实现会话状态持久化
-4. **工作流编排**: 支持多节点路由、条件分支、循环等复杂工作流
+---
+
+## 核心技术
+
+| 技术 | 实现说明 |
+|------|----------|
+| **Manifest 驱动架构** | 基于 PLUGIN.yaml 声明式配置，路由规则、意图声明、Prompt 模板均从配置文件动态加载，新增 Expert 时无需修改框架代码 |
+| **分层漏斗路由** | L1 关键词匹配（<1ms）→ L2 向量语义（保留入口）→ L3 LLM Function Calling，按优先级依次尝试匹配 |
+| **Orchestrator-Worker 编排** | Supervisor 统一路由 → Planner 分解任务 + 波次调度 → Expert 并行执行 → Merge 合并润色，支持依赖关系的子任务调度 |
+| **多意图识别** | 单次请求可识别多个意图，按类别并行分发到对应 Expert 执行 |
+| **插件化 Expert** | ExpertPlugin 抽象基类 + PluginRegistry 注册表，Expert 通过插件目录注册，框架自动完成图节点注册和路由映射 |
+| **模块化 RAG** | 索引器（ChromaDB / Milvus）、检索器（Simple / Reranking / Filtered）、生成器（Stuff / MapReduce / Refine）均为可插拔组件 |
+| **状态持久化** | LangGraph Checkpoint 机制，支持 Memory 和 Redis 两种存储后端 |
+| **情绪感知** | 基于关键词和 LLM 的情绪检测，识别 6 种情绪类型，动态调整 Prompt 语气 |
+
+---
+
+## 系统架构
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                          Client (React + Vite)                      │
+│              Chat UI · Config Panel · File Preview                  │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │ SSE / REST
+┌──────────────────────────────▼──────────────────────────────────────┐
+│                       Gateway (Nginx)                                │
+└──────┬──────────┬──────────┬──────────┬─────────────────────────────┘
+       │          │          │          │
+┌──────▼───┐ ┌───▼────┐ ┌──▼───┐ ┌───▼──────┐
+│  Flask    │ │  MCP   │ │  DB  │ │  Consul  │
+│  App      │ │ Server │ │ API  │ │ Registry │
+└──────┬───┘ └───┬────┘ └──┬───┘ └──────────┘
+       │         │         │
+       ▼         ▼         ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                     LangGraph StateGraph                             │
+│                                                                      │
+│  ┌──────────┐   ┌──────────┐   ┌───────────┐   ┌────────────────┐  │
+│  │ Feeling  │──▶│ Intent   │──▶│ Supervisor │──▶│ Planner        │  │
+│  │ Detect   │   │ Recognize│   │           │   │ Decompose      │  │
+│  └──────────┘   └──────────┘   └───────────┘   └───────┬────────┘  │
+│                                                        │            │
+│                                               ┌────────▼────────┐   │
+│                                               │ Planner Dispatch │   │
+│                                               │ (波次调度)       │   │
+│                                               └──┬──┬──┬──┬────┘   │
+│                    ┌──────────────────────────────┘  │  │  │        │
+│              ┌─────▼─────┐  ┌──────▼─────┐  ┌─────▼─────┐  ┌────▼───┐
+│              │ MCP       │  │ Skill      │  │ RAG       │  │ Chat   │
+│              │ Expert    │  │ Expert     │  │ Expert    │  │ Expert │
+│              └─────┬─────┘  └──────┬─────┘  └─────┬─────┘  └───┬────┘
+│                    └───────────────┬┴───────────────┘            │
+│                               ┌───▼──────────────────────────────┘
+│                               │ Merge Node (合并润色)             │
+│                               └──────────────────────────────────┘
+└──────────────────────────────────────────────────────────────────────┘
+       │              │              │
+┌──────▼───┐  ┌──────▼──────┐  ┌───▼────┐  ┌──────────┐
+│ ChromaDB  │  │ MCP Tools   │  │ Skills │  │ Redis    │
+│ Milvus    │  │ (钉钉/天气)  │  │        │  │ Checkpoint│
+└──────────┘  └─────────────┘  └────────┘  └──────────┘
+```
+
+---
+
+## 核心流程
 
 ### 完整节点流程
 
@@ -142,14 +148,10 @@ sequenceDiagram
     Feeling->>Intent: feeling
     Intent->>Supervisor: intents
     Supervisor->>Supervisor: 重置 agent_results / planned_subtasks
-
-    Note over Supervisor,Merge: 统一 Planner 路由：所有意图 → planner_decompose
-
     Supervisor->>Planner: 统一路由
     Planner->>Planner: 可执行意图直接构建子任务（不调 LLM）
     Planner->>Planner: complex_plan 意图 LLM 独立分解
     Planner->>Planner: 合并为统一子任务列表
-
     Planner->>Dispatch: planned_subtasks
     loop 波次调度循环
         Dispatch->>Dispatch: 计算就绪子任务（depends_on 已满足）
@@ -163,1227 +165,471 @@ sequenceDiagram
         Chat->>Dispatch: agent_results
     end
     Dispatch->>Merge: 全部完成
-
     Merge->>Merge: 合并结果 + LLM 润色
     Merge-->>User: 最终回答
 ```
 
-### 执行层详细流程
+### 执行示例
 
-以用户输入 **"查杭州天气，画架构图"** 为例（混合可执行意图）：
-
-```
-用户输入: "查杭州天气，画架构图"
-        │
-        ▼
-intent_recognize (意图识别)
-        │
-        ├── LLM 分析返回 intents = [
-        │     Intent(type="mcp_get_weather", category="mcp", target="mcp:get_weather"),
-        │     Intent(type="skill_drawio", category="skill", target="skill:drawio-skill")
-        │   ]
-        │
-        ▼
-supervisor (统一路由 → planner_decompose)
-        │
-        ▼
-planner_decompose (任务分解)
-        │
-        ├── 可执行意图直接构建子任务（不调 LLM）：
-        │     [0] mcp:   查杭州天气      depends_on: []
-        │     [1] skill: 画架构图        depends_on: []
-        │
-        ▼
-planner_dispatch (波次调度)
-        │
-        ├── 第1轮：ready=[0,1] → 并行 Send
-        │     Send(mcp_expert,   {intents: [mcp],   __subtask_idx__: 0})
-        │     Send(skill_expert, {intents: [skill], __subtask_idx__: 1})
-        │
-        ├── Expert 并行执行后回到 planner_dispatch
-        │
-        ├── 第2轮：全部完成 → merge
-        │
-        ▼
-merge → LLM 润色 → 最终回答
-```
-
-以用户输入 **"创建一个在线表格应用"** 为例（纯 complex_plan 意图）：
+**混合可执行意图** — 用户输入："查杭州天气，画架构图"
 
 ```
-用户输入: "创建一个在线表格应用"
-        │
-        ▼
-intent_recognize → [complex_plan]
-        │
-        ▼
-supervisor → planner_decompose
-        │
-        ├── 无可执行意图，跳过直接构建
-        ├── LLM 独立分解 complex_plan：
-        │     [0] chat: 分析核心需求        depends_on: []
-        │     [1] chat: 设计数据模型         depends_on: [0]
-        │     [2] chat: 规划技术选型         depends_on: [0]
-        │     [3] chat: 整合输出开发计划      depends_on: [1,2]
-        │
-        ▼
-planner_dispatch (波次调度)
-        │
-        ├── 第1轮：ready=[0]     → Send(chat_expert)
-        ├── 第2轮：ready=[1,2]   → Send(chat_expert) × 2（并行）
-        ├── 第3轮：ready=[3]     → Send(chat_expert)
-        ├── 第4轮：全部完成 → merge
-        │
-        ▼
-merge → LLM 润色 → 最终回答
+用户输入 → intent_recognize → [mcp: 查天气, skill: 画架构图]
+         → supervisor → planner_decompose
+         → 可执行意图直接构建子任务（不调 LLM）：
+             [0] mcp:   查杭州天气      depends_on: []
+             [1] skill: 画架构图        depends_on: []
+         → planner_dispatch（第1波）：ready=[0,1] → 并行 Send
+         → mcp_expert + skill_expert 并行执行
+         → planner_dispatch（第2波）：全部完成 → merge
+         → LLM 润色 → 最终回答
 ```
 
-**Expert 节点映射**：
-
-| Expert           | 类别    | 工具集                                     | 执行流程                  |
-| ---------------- | ----- | --------------------------------------- | --------------------- |
-| `mcp_expert`     | MCP   | MCP 动态工具 + mcp\_execute 兜底              | ReAct 循环选工具→提参→执行     |
-| `skill_expert`   | Skill | Skill 动态工具 + skill\_execute 兜底          | ReAct 循环选技能→提参→执行     |
-| `rag_expert`     | RAG   | knowledge\_search + knowledge\_generate | ReAct 循环选知识库→检索→生成    |
-| `chat_expert`    | Chat  | 无工具（纯内容生成，润色由 MergeNode 统一处理）           | 直接对话                  |
-
-### 意图识别节点详解
-
-`intent_recognize` 采用 **分层漏斗路由架构**：
+**复杂任务规划** — 用户输入："创建一个在线表格应用"
 
 ```
-IntentRouter.route(query)
-    │
-    ├─── L1 关键词匹配（<1ms）───────────────────────────────────────────────┐
-    │   检查固定指令: /help, exit, yes, no...                               │
-    │   命中 → 直接返回 Intent                                              │
-    │                                                                        │
-    ├─── L2 向量语义匹配（保留入口）─────────────────────────────────────────┤
-    │   暂未实现，返回 None                                                  │
-    │                                                                        │
-    └─── L3 LLM 意图识别（1-2s）─────────────────────────────────────────────┤
-        IntentRecognizer.recognize(query)                                   │
-        │                                                                   │
-        ├── 构建 Prompt（包含所有已注册意图类型及描述）                        │
-        ├── 调用 LLM 返回结构化 JSON                                         │
-        └── 解析为 List[Intent]                                              │
-                                                                            │
-    输出: intents = [                                                       │
-        Intent(type="rag_exams", category=RAG, content="查询行测技巧", ...), │
-        Intent(type="skill_drawio", category=SKILL, content="画架构图", ...) │
-    ]                                                                       │
+用户输入 → intent_recognize → [complex_plan]
+         → supervisor → planner_decompose
+         → LLM 独立分解 complex_plan：
+             [0] chat: 分析核心需求        depends_on: []
+             [1] chat: 设计数据模型         depends_on: [0]
+             [2] chat: 规划技术选型         depends_on: [0]
+             [3] chat: 整合输出开发计划      depends_on: [1,2]
+         → planner_dispatch 波次调度：
+             第1波：[0] → chat_expert
+             第2波：[1,2] → chat_expert × 2（并行）
+             第3波：[3] → chat_expert
+         → merge → LLM 润色 → 最终回答
 ```
 
-### 意图类型动态注册
+---
 
-系统启动时自动从多个来源注册意图类型：
+## 核心模块
 
-```
-factory.py 初始化流程:
-    │
-    ├── IntentRegistry()                    # 创建注册表
-    │   └── 自动注册系统意图: system_help, system_exit, system_confirm
-    │
-    ├── register_from_skills()              # 从技能注册
-    │   └── 生成意图: skill_drawio-skill, skill_analysis...
-    │
-    ├── register_from_knowledge_bases()     # 从知识库注册
-    │   └── 生成意图: rag_exams, rag_politics...
-    │
-    └── register_from_mcp_tools()           # 从 MCP 工具注册
-        └── 生成意图: mcp_weather, mcp_dingtalk_schedule...
-```
+### 1. 意图识别（Intent Recognition）
 
-### 意图类型
+采用 **分层漏斗路由架构**，先快后慢、先低成本后高智能：
 
-| 类别     | 枚举值            | 说明       | 示例                                    |
-| ------ | -------------- | -------- | ------------------------------------- |
-| RAG    | `rag`          | 知识库检索    | rag\_exams, rag\_politics             |
-| SKILL  | `skill`        | 技能执行     | skill\_drawio-skill, skill\_analysis  |
-| MCP    | `mcp`          | MCP 工具调用 | mcp\_weather, mcp\_dingtalk\_schedule |
-| PLAN   | `complex_plan` | 复杂任务编排   | complex\_plan（Planner 分解+波次调度）        |
-| CHAT   | `chat`         | 通用对话     | chat（Chat Expert 润色）                  |
-| SYSTEM | `system`       | 系统指令     | system\_help, system\_exit            |
+| 层级 | 策略 | 延迟 | 说明 |
+|------|------|------|------|
+| L1 | 关键词/正则匹配 | <1ms | 处理固定指令（/help, exit, yes/no） |
+| L2 | 向量语义匹配 | 30-100ms | 保留入口，处理同义改写 |
+| L3 | LLM Function Calling | 1-2s | 处理复杂请求和多意图 |
 
-### 多意图识别
+**意图类型**：
 
-系统支持识别包含多个意图的用户请求：
+| 类别 | 枚举值 | 说明 | 示例 |
+|------|--------|------|------|
+| RAG | `rag` | 知识库检索 | rag_exams, rag_politics |
+| Skill | `skill` | 技能执行 | skill_drawio-skill, skill_analysis |
+| MCP | `mcp` | MCP 工具调用 | mcp_weather, mcp_dingtalk_schedule |
+| Plan | `complex_plan` | 复杂任务编排 | Planner 分解 + 波次调度 |
+| Chat | `chat` | 通用对话 | Chat Expert 润色 |
+| System | `system` | 系统指令 | system_help, system_exit |
 
-```
-用户输入: "先帮我查询行测蒙题技巧，再帮我画一个架构图"
+**意图动态注册**：系统启动时自动从多个来源注册意图类型 — 技能（SKILL.md）、知识库（databases.json）、MCP 工具（tools/registry.py），无需硬编码。
 
-识别结果:
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  意图[1]:                                                                    │
-│    - 类型: rag_exams                                                         │
-│    - 类别: rag                                                               │
-│    - 内容: 查询行测绝杀蒙题技巧                                                │
-│    - 目标: knowledge_base:exams                                              │
-│                                                                             │
-│  意图[2]:                                                                    │
-│    - 类型: skill_drawio-skill                                                │
-│    - 类别: skill                                                             │
-│    - 内容: 画一个架构图                                                       │
-│    - 目标: skill:drawio-skill                                                │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+### 2. 多 Agent 协作（Multi-Agent）
 
-### 节点说明
+**Orchestrator-Worker 模式**，Planner 拆分为 Decompose（分解）和 Dispatch（调度）两个节点：
 
-| 节点                  | 职责     | 说明                                          |
-| ------------------- | ------ | ------------------------------------------- |
-| `feeling_detect`    | 情绪检测   | 检测用户情绪，动态更新 Prompt                          |
-| `intent_recognize`  | 意图识别   | 识别用户意图，支持多意图识别（L1关键词+L3 LLM）                |
-| `supervisor`        | 统一路由   | 重置状态 + 统一路由到 planner_decompose               |
-| `planner_decompose` | 任务分解   | 可执行意图直接构建子任务 + complex_plan LLM 独立分解，合并为统一列表 |
-| `planner_dispatch`  | 波次调度   | 独立子任务并行 Send，依赖子任务按波次串行，循环直到全部完成            |
-| `mcp_expert`        | MCP 执行 | ReAct 循环完成 MCP 工具选择和参数提取                    |
-| `skill_expert`      | 技能执行   | ReAct 循环完成技能选择和参数提取                         |
-| `rag_expert`        | RAG 检索 | ReAct 循环完成知识库选择、检索和生成                       |
-| `chat_expert`       | 对话生成   | 通用对话，只生成纯内容，润色由 MergeNode 统一处理              |
-| `merge`             | 结果合并   | 合并所有 Expert 结果，LLM 润色生成最终回答                 |
+- **PlannerDecompose**：可执行意图直接构建子任务（无 LLM），complex_plan 意图独立调用 LLM 分解
+- **PlannerDispatch**：按波次调度，独立子任务并行 Send，依赖子任务按波次串行，循环直到全部完成
 
-### 思考步骤枚举（Step）
+**Expert 节点**：
 
-所有节点通过 `Step` 枚举推送思考过程事件：
+| Expert | 类别 | 工具集 | 执行流程 |
+|--------|------|--------|----------|
+| `mcp_expert` | MCP | MCP 动态工具 + mcp_execute 兜底 | ReAct 循环选工具→提参→执行 |
+| `skill_expert` | Skill | Skill 动态工具 + skill_execute 兜底 | ReAct 循环选技能→提参→执行 |
+| `rag_expert` | RAG | knowledge_search + knowledge_generate | ReAct 循环选知识库→检索→生成 |
+| `chat_expert` | Chat | 无工具（纯内容生成） | 直接对话 |
 
-```python
-from .steps import Step
+### 3. Manifest 驱动的插件化架构
 
-writer(Step.FEELING_DETECT.started_event())
-writer(Step.FEELING_DETECT.completed_event(detail="积极 (8)"))
-```
+新增 Expert 只需三步，框架代码零改动：
 
-枚举成员：
+1. 创建插件目录（含 `PLUGIN.yaml` + `plugin.py`）
+2. 继承 `ExpertPlugin`，实现 `meta` + `execute`
+3. `registry.register(YourPlugin())`
 
-| Step 成员             | step 标识             | 显示名称   | 图标 |
-| ------------------- | ------------------- | ------ | -- |
-| `FEELING_DETECT`    | `feeling_detect`    | 情绪分析   | 😊 |
-| `INTENT_RECOGNIZE`  | `intent_recognize`  | 意图识别   | 🎯 |
-| `SUPERVISOR`        | `supervisor`        | 路由分发   | 🔀 |
-| `PLANNER_DECOMPOSE` | `planner_decompose` | 任务分解   | �  |
-| `PLANNER_DISPATCH`  | `planner_dispatch`  | 波次调度   | �  |
-| `MCP_EXPERT`        | `mcp_expert`        | MCP 执行 | ⚙️ |
-| `SKILL_EXPERT`      | `skill_expert`      | 技能执行   | 🎨 |
-| `RAG_EXPERT`        | `rag_expert`        | 知识检索   | 📚 |
-| `CHAT_EXPERT`       | `chat_expert`       | 对话生成   | 🤖 |
-| `MERGE`             | `merge`             | 结果合并   | ✅  |
+框架自动完成：图注册（add_node + add_edge）、路由映射（CATEGORY_EXPERT_MAP）、能力描述（DECOMPOSE_PROMPT）、意图注册。
 
-### 多 Agent 协作架构（插件化）
-
-系统采用 **ExpertPlugin + PluginRegistry** 插件化架构，新增 Expert 只需添加插件，框架代码零改动。
-
-#### 插件化架构
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    PluginRegistry                        │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
-│  │MCPPlugin │ │SkillPlugin│ │RAGPlugin │ │ChatPlugin│   │
-│  │category: │ │category: │ │category: │ │category: │   │
-│  │  mcp     │ │  skill   │ │  rag     │ │  chat    │   │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘   │
-│       │             │            │            │          │
-│  ┌────┴─────────────┴────────────┴────────────┴────┐    │
-│  │  ExpertPlugin (抽象基类)                          │    │
-│  │  meta / execute / on_activate / render_capability │    │
-│  └──────────────────────────────────────────────────┘    │
-│                                                          │
-│  框架集成接口：                                           │
-│  register_graph_nodes()  → 动态注册图节点和边             │
-│  build_category_map()    → category → expert 映射        │
-│  build_dispatch_targets() → 调度路由目标                  │
-│  build_capability_descriptions() → Planner 能力描述       │
-└─────────────────────────────────────────────────────────┘
-```
-
-#### 新增 Expert 步骤
-
-```python
-# 1. 继承 ExpertPlugin，实现 meta + execute
-class MyPlugin(ExpertPlugin):
-    def __init__(self):
-        self._meta = ExpertMeta(
-            name="my_expert",
-            category="my_category",
-            description="我的自定义 Expert",
-            icon="🚀",
-            label="自定义 Agent",
-        )
-
-    @property
-    def meta(self) -> ExpertMeta:
-        return self._meta
-
-    def on_activate(self, context: Dict[str, Any]):
-        ai_client = context["ai_client"]
-        # 创建 Agent...
-
-    def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        # 执行业务逻辑...
-        return self._build_result(answer, state)
-
-# 2. 注册插件（agent.py）
-registry.register(MyPlugin())
-
-# 3. 完成！框架自动注册图节点、边、路由映射、能力描述
-```
-
-#### 核心设计原则
-
-1. **工具隔离**：每个 Expert Agent 只看到自己领域的工具，从根源杜绝工具幻觉
-2. **LLM-in-the-loop**：参数提取由 LLM 完成，不手动拼装参数
-3. **Orchestrator-Worker 模式**：Planner 分解复杂任务为子任务，波次调度并行/串行执行
-4. **意图即上下文**：将意图信息作为 Agent 输入的上下文提示，避免其他类别意图污染
-5. **契约式设计**：基类定义核心接口（meta / execute），插件自主实现业务逻辑，公共功能通过 helpers.py 按需复用
-6. **统一 Planner 路由**：所有意图统一路由到 planner_decompose，Planner 内部区分可执行/复杂规划意图
-
-#### Expert 节点说明
-
-| Expert           | 类别    | 工具集                                     | 说明                          |
-| ---------------- | ----- | --------------------------------------- | --------------------------- |
-| `mcp_expert`     | MCP   | MCP 动态工具 + mcp\_execute 兜底              | ReAct 循环选工具→提参→执行           |
-| `skill_expert`   | Skill | Skill 动态工具 + skill\_execute 兜底          | ReAct 循环选技能→提参→执行           |
-| `rag_expert`     | RAG   | knowledge\_search + knowledge\_generate | ReAct 循环选知识库→检索→生成          |
-| `chat_expert`    | Chat  | 无工具（纯内容生成，润色由 MergeNode 统一处理）           | 直接对话                        |
-
-#### 统一 Planner 路由策略
-
-Supervisor 统一路由所有意图到 `planner_decompose`，由 Planner 内部区分处理：
-
-1. **可执行意图**（mcp/skill/rag/chat/system）→ 直接构建子任务，不调 LLM，单波次完成
-2. **complex_plan 意图** → 每个 complex_plan 独立调用 LLM 分解，保留完整规划能力
-3. **混合意图** → 可执行直接构建 + complex_plan LLM 分解，合并后统一波次调度
-
-#### Planner 编排流程
-
-```
-用户输入: "帮我设计一个技术方案并画架构图"
-        │
-        ▼
-intent_recognize → [complex_plan]
-        │
-        ▼
-supervisor → planner_decompose（统一路由）
-        │
-        ▼
-LLM 独立分解 complex_plan → PlannedSubtask 列表
-  ├── [0] 查询技术方案模板 (rag, depends_on=[])
-  ├── [1] 生成技术方案文档 (skill, depends_on=[0])
-  └── [2] 画架构图 (skill, depends_on=[])
-        │
-        ▼
-planner_dispatch → 波次调度
-  ├── 波次1: Send(rag_expert, [0]) + Send(skill_expert, [2])  ← 并行
-  ├── 波次2: Send(skill_expert, [1])                           ← 依赖波次1
-  └── 全部完成 → merge
-```
-
-#### 混合意图处理
-
-混合意图场景下，Planner 将可执行意图直接构建子任务 + complex_plan LLM 分解，合并后统一波次调度：
-
-```
-用户输入: "查杭州天气，创建一个在线表格应用"
-        │
-        ▼
-intent_recognize → [mcp:weather, complex_plan]
-        │
-        ▼
-supervisor → planner_decompose（统一路由）
-        │
-        ├── 可执行意图直接构建（不调 LLM）：
-        │     [0] mcp: 查杭州天气    depends_on: []
-        │
-        ├── complex_plan LLM 独立分解：
-        │     [1] chat: 分析核心需求   depends_on: []
-        │     [2] chat: 设计数据模型    depends_on: [1]
-        │     [3] chat: 整合开发计划    depends_on: [2]
-        │
-        ▼
-planner_dispatch → 波次调度
-  ├── 波次1: Send(mcp_expert, [0]) + Send(chat_expert, [1])  ← 并行
-  ├── 波次2: Send(chat_expert, [2])
-  ├── 波次3: Send(chat_expert, [3])
-  └── 全部完成 → merge
-```
-
-## 模块化 RAG 框架
-
-将 RAG 流程拆分为可插拔的独立模块，支持自由组合和扩展。
-
-### 模块结构
-
-```
-RAG 流程:
-用户提问 → 智能路由 → 选择知识库 → 检索文档（含查询扩展）→ 生成回答 → 返回结果
-           ↓           ↓           ↓                  ↓         ↓
-         Router    Knowledge    Retriever          Generator
-           ↓           ↓           ↓                  ↓
-       LLMRouter   Multi KB    SimpleVector      BaseGenerator
-                                    ↓
-                              Chroma/Milvus
-```
-
-### 核心模块
-
-| 模块        | 职责            | 基类            | 实现类                                                          |
-| --------- | ------------- | ------------- | ------------------------------------------------------------ |
-| Indexer   | 文档加载、切分、向量化存储 | BaseIndexer   | ChromaIndexer, MilvusIndexer                                 |
-| Retriever | 从索引中检索相关文档    | BaseRetriever | SimpleVectorRetriever, RerankingRetriever, FilteredRetriever |
-| Generator | 基于检索文档生成回答    | BaseGenerator | StuffGenerator, MapReduceGenerator, RefineGenerator          |
-| Router    | 决定是否检索、选择知识库  | BaseRouter    | SimpleRouter, LLMRouter                                      |
-
-### 多知识库支持
-
-| 知识库名称    | 用途   | 示例内容          |
-| -------- | ---- | ------------- |
-| exams    | 考试资料 | 行测蒙题技巧、考试复习资料 |
-| politics | 政策文档 | 党的会议文件、政策文件   |
-| general  | 通用知识 | 产品文档、公司信息     |
-
-### 智能路由（LLMRouter）
-
-使用大语言模型分析用户问题，实现：
-
-1. **判断是否需要检索**：区分需要知识库的问题和常识/创意问题
-2. **选择知识库**：根据问题领域选择合适的知识库
-3. **选择检索策略**：根据问题复杂度调整检索参数
-
-### 查询扩展
-
-通过 LLM 生成多个相关查询词，提高召回率：
-
-1. 接收用户原始查询
-2. 使用 LLM 生成 3-5 个相关查询词
-3. 对每个查询词执行检索
-4. 合并结果并去重
-5. 返回最终检索结果
-
-## 技能系统
-
-技能系统基于 **SKILL.md** 格式定义技能，支持语义匹配和脚本执行，实现可扩展的能力增强。
-
-### 技能定义格式
-
-每个技能是一个独立目录，包含 `SKILL.md` 文件：
-
-```
-skills/
-├── drawio-skill/           # 绘图技能
-│   ├── SKILL.md           # 技能定义
-│   ├── scripts/           # 脚本文件
-│   ├── references/        # 参考文档
-│   └── styles/            # 样式配置
-├── data-analysis/         # 数据分析技能
-│   └── SKILL.md
-├── trip-plan/             # 旅行规划技能
-│   └── SKILL.md
-└── tldraw-skill/          # TLDraw 技能
-    └── SKILL.md
-```
-
-**SKILL.md 结构**：
+**PLUGIN.yaml 示例**（MCP Expert）：
 
 ```yaml
----
-name: drawio-skill
-version: 1.5.2
-description: 用于生成流程图、架构图、ER图、UML图等可视化图表
-license: MIT
----
+name: mcp_expert
+description: 外部工具调用（天气查询、钉钉日程、消息推送等）
+version: "1.0.0"
 
-# Draw.io Diagrams
+expert:
+  category: mcp
+  icon: 🔧
+  label: 工具调用 Agent
+  priority: 100
 
-## Overview
-生成 .drawio XML 文件并导出为 PNG/SVG/PDF...
+routing:
+  target_format: "mcp:{tool_name}"
+  target_prefix: "mcp:"
+  aliases: {}
+  default_fallback: false
 
-## Workflow
-1. 检查依赖 → 2. 规划布局 → 3. 生成 XML → 4. 导出预览 → 5. 自检修正 → 6. 用户确认 → 7. 最终导出
+intents:
+  dynamic: true    # 运行时从 MCP 工具列表动态发现
+  static: []
+
+prompt:
+  capability_template: "mcp: {description}。当前可用工具：{tools}"
 ```
 
-### 技能系统架构
+### 4. 模块化 RAG
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        技能系统架构                               │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐        │
-│  │ SkillLoader │───▶│SkillIndexer │───▶│SkillMatcher│        │
-│  │  (加载器)   │    │  (索引器)   │    │  (匹配器)   │        │
-│  └─────────────┘    └─────────────┘    └──────┬──────┘        │
-│         │                  │                   │               │
-│         ▼                  ▼                   ▼               │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐        │
-│  │ SKILL.md    │    │  ChromaDB   │    │ 语义/关键词  │        │
-│  │ 解析加载    │    │ 向量存储    │    │ 双策略匹配  │        │
-│  └─────────────┘    └─────────────┘    └─────────────┘        │
-│                                                                 │
-│                        匹配成功后                               │
-│                            │                                   │
-│                            ▼                                   │
-│                   ┌─────────────────┐                          │
-│                   │  SkillExecutor  │                          │
-│                   │    (执行器)      │                          │
-│                   └────────┬────────┘                          │
-│                            │                                   │
-│              ┌─────────────┼─────────────┐                     │
-│              ▼             ▼             ▼                     │
-│        ┌──────────┐ ┌──────────┐ ┌──────────┐                 │
-│        │ 脚本执行  │ │ 指令返回 │ │ 资源加载 │                 │
-│        │ (.py/.sh)│ │(LLM执行) │ │(参考文档)│                 │
-│        └──────────┘ └──────────┘ └──────────┘                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+可插拔组件设计，支持灵活组合：
 
-### 核心组件
+| 组件 | 实现 |
+|------|------|
+| **索引器** | ChromaIndexer, MilvusIndexer |
+| **检索器** | SimpleVectorRetriever, RerankingRetriever, FilteredRetriever |
+| **生成器** | StuffGenerator, MapReduceGenerator, RefineGenerator |
+| **路由器** | SimpleRouter, LLMRouter（智能选择知识库） |
+| **查询扩展** | LLM 生成同义查询词，合并多次检索结果去重 |
 
-| 组件            | 文件          | 职责                    |
-| ------------- | ----------- | --------------------- |
-| SkillLoader   | loader.py   | 加载 SKILL.md 文件，延迟加载策略 |
-| SkillIndexer  | indexer.py  | 将技能向量化存储到 ChromaDB    |
-| SkillMatcher  | matcher.py  | 语义匹配 + 关键词匹配双策略       |
-| SkillExecutor | executor.py | 安全执行技能脚本，工作目录隔离       |
+### 5. MCP 工具服务
 
-### 技能匹配策略
+独立部署的 MCP 服务器，基于 Streamable HTTP 协议：
 
-采用 **双策略匹配**，优先语义匹配，关键词兜底：
+- **天气查询**：get_weather, weather_recommend
+- **钉钉集成**：日程创建/查询/删除、待办事项管理
+- **表单提交**：submit_form
+- **动态扩展**：通过 tools/registry.py 注册新工具，自动暴露为 MCP 能力
 
-```
-用户查询: "帮我画一个系统架构图"
-        │
-        ▼
-┌───────────────────────────────────────────────┐
-│  SkillMatcher.match(query)                     │
-├───────────────────────────────────────────────┤
-│                                               │
-│  策略 1: 语义匹配（优先）                        │
-│  ├── 调用 SkillIndexer.search(query, k=3)      │
-│  ├── 计算向量相似度                            │
-│  ├── 阈值判断 (threshold=1.5)                  │
-│  └── 命中 → 返回技能                           │
-│                                               │
-│  策略 2: 关键词匹配（兜底）                      │
-│  ├── 提取查询关键词                            │
-│  ├── 匹配技能名称和描述                         │
-│  ├── 精确匹配 → 返回技能                       │
-│  └── 模糊匹配 → 返回技能                       │
-│                                               │
-└───────────────────────────────────────────────┘
-        │
-        ▼
-返回: {name: "drawio-skill", description: "...", instructions: "..."}
-```
+### 6. 技能系统（Skill System）
 
-### 技能执行流程
+基于 SKILL.md 的技能匹配和执行引擎：
 
-技能执行有两种模式：
+| 技能 | 说明 |
+|------|------|
+| drawio-skill | 生成 Draw.io 架构图/流程图，支持多种样式预设 |
+| tldraw-skill | 生成 tldraw 白板绘图 |
+| data-analysis | 数据分析与可视化 |
+| trip-plan | 旅行规划 |
 
-**模式 1: LLM 自主执行（推荐）**
+技能匹配支持向量语义索引，自动匹配最相关的技能。
 
-```
-LangChain Agent 获取 skill_instructions
-        │
-        ▼
-LLM 根据 instructions 自主完成任务
-        │
-        ▼
-返回结果给用户
-```
+### 7. 状态持久化
 
-**模式 2: 脚本执行**
+通过 LangGraph Checkpoint 机制实现会话状态持久化：
 
-```python
-# 执行技能脚本
-executor.run_script(
-    skill_name="drawio-skill",
-    script_path="scripts/export.py",
-    args=["--format", "png"],
-    timeout=30
-)
-```
+| 存储 | 说明 |
+|------|------|
+| MemoryCheckpointSaver | 内存存储，开发调试用 |
+| RedisCheckpointSaver | Redis 持久化，生产环境推荐 |
 
-### 内置技能
+### 8. 情绪感知
 
-| 技能名称          | 功能                 | 关键词            |
-| ------------- | ------------------ | -------------- |
-| drawio-skill  | 生成流程图、架构图、ER图、UML图 | 画图、架构图、流程图、ER图 |
-| data-analysis | 数据分析、统计计算          | 分析数据、统计、报表     |
-| trip-plan     | 旅行规划、行程安排          | 旅行、旅游、行程       |
-| tldraw-skill  | TLDraw 绘图          | tldraw、手绘风格    |
+6 种情绪检测，动态更新 Prompt 语气风格：
 
-### 技能扩展
+| 情绪 | 说明 | 典型关键词 |
+|------|------|-----------|
+| default | 中性 | — |
+| upbeat | 积极向上 | 加油、努力、奋斗 |
+| angry | 愤怒不满 | 生气、投诉、差评 |
+| cheerful | 欢快喜悦 | 太棒了、厉害、完美 |
+| depressed | 消极低落 | 难过、焦虑、迷茫 |
+| friendly | 友好亲切 | 谢谢、麻烦你、辛苦了 |
 
-添加新技能只需创建目录和 SKILL.md 文件：
+### 9. 反思校验
 
-```bash
-# 1. 创建技能目录
-mkdir server/skills/my-skill
+对回答进行质量评估，检测幻觉并提供改进建议：
 
-# 2. 创建 SKILL.md
-cat > server/skills/my-skill/SKILL.md << 'EOF'
----
-name: my-skill
-version: 1.0.0
-description: 我的自定义技能
+- 事实一致性校验
+- 回答完整性评估
+- 逻辑合理性检查
+- 自动生成改进建议
+
+### 10. SSE 流式响应
+
+对齐 AG-UI (Agent-User Interaction) 协议标准：
+
+| 事件类型 | 说明 |
+|----------|------|
+| STEP_STARTED | 节点开始执行 |
+| STEP_FINISHED | 节点执行完成 |
+| TEXT_MESSAGE_CONTENT | LLM 逐 token 输出（打字机效果） |
+| RUN_FINISHED | 整体运行完成 |
+| RUN_ERROR | 运行异常 |
+
 ---
 
-# My Skill
+## 钉钉集成
 
-## Overview
-技能概述...
+### 纵横 SDK（DingTalk Stream）
 
-## Instructions
-执行指令...
-EOF
+通过 `dingtalk-stream` SDK 实现钉钉机器人实时消息收发：
 
-# 3. 重启服务，自动加载
-```
+- **Stream 长连接**：基于 WebSocket 的钉钉 Stream API，无需公网回调地址
+- **消息去重**：基于 message_id 去重，防止重复处理
+- **会话管理**：按用户 ID 维护独立会话，支持多轮对话
+- **自动回复**：接收用户消息 → LangGraph Agent 处理 → 自动回复
 
-系统启动时会自动：
+### 仓颉编辑器（MCP 工具）
 
-1. 扫描 `skills/` 目录
-2. 加载所有 SKILL.md 文件
-3. 向量化索引技能描述
-4. 注册到意图识别系统
+钉钉相关 MCP 工具，支持通过自然语言操作钉钉功能：
 
-## MCP 架构
+| 工具 | 说明 |
+|------|------|
+| dingtalk_schedule_create | 创建日程（支持时间、参与者、地点） |
+| dingtalk_schedule_query | 查询日程列表 |
+| dingtalk_schedule_delete | 删除日程 |
+| dingtalk_todo | 管理待办事项 |
 
-MCP（Model Context Protocol）服务器负责管理和提供工具服务，支持独立部署。
-
-### MCP 服务器架构
-
-```
-┌───────────────────────────────────────────────────────┐
-│                MCP 服务器 (8080端口)                    │
-│  ┌────────────────────────────────────────────────────┐
-│  │           工具注册表 (_TOOL_REGISTRY)                │
-│  │  ┌─────────┐ ┌─────────┐ ┌─────────────┐           │
-│  │  │get_weather│ │get_weather│ │dingtalk_   │           │
-│  │  │           │ │_forecast │ │schedule    │           │
-│  │  └────┬────┘ └────┬────┘ └──────┬──────┘           │
-│  └───────┼───────────┼─────────────┼                  │
-│          │           │             │                  │
-│          └───────────┼─────────────┘                  │
-│                      ↓                                │
-│            ┌─────────────────┐                        │
-│            │  FastMCP Server │ ← Streamable HTTP      │
-│            └─────────────────┘                        │
-└───────────────────────────────────────────────────────┘
-                          ↑
-                          │ HTTP 请求
-                          ↓
-┌─────────────────────────────────────────────────────┐
-│              应用服务器 (5000端口)                    │
-│  ┌─────────────┐    ┌─────────────┐                 │
-│  │   Agent     │←───│MCPToolService│                │
-│  │ (LangGraph) │    │   (客户端)   │                 │
-│  └─────────────┘    └─────────────┘                 │
-└─────────────────────────────────────────────────────┘
-```
-
-### MCP 多服务器支持
-
-系统支持从多个 MCP 服务器获取工具，实现工具服务的分布式部署：
-
-```python
-MCP_SERVERS = [
-    {"name": "default", "url": "http://localhost:8080/mcp"},
-    {"name": "dingtalk", "url": "http://localhost:8081/mcp"},
-    {"name": "custom", "url": "http://custom-server:8080/mcp"}
-]
-```
-
-### 工具注册机制
-
-工具通过装饰器注册到全局注册表：
-
-```python
-from mcp_module.tools.registry import register_tool
-
-@register_tool(
-    name="get_weather",
-    description="查询指定城市的实时天气",
-    parameters=[
-        {"name": "city", "type": "string", "description": "城市名称", "required": True}
-    ],
-    return_type="string"
-)
-def get_weather(city: str) -> str:
-    return f"{city}今天晴，温度25°C"
-```
-
-### 钉钉工具列表
-
-| 工具名称                       | 功能   | 参数                                    |
-| -------------------------- | ---- | ------------------------------------- |
-| `create_dingtalk_schedule` | 创建日程 | summary, isAllDay, start/end datetime |
-| `query_dingtalk_schedule`  | 查询日程 | schedule\_id 或查询条件                    |
-| `delete_dingtalk_schedule` | 删除日程 | schedule\_id                          |
-| `create_dingtalk_todo`     | 创建待办 | summary, due\_date                    |
-
-## 快速开始
-
-### 环境要求
-
-- Python >= 3.10
-- Node.js >= 16
-- 阿里云百炼 API 密钥（或 OpenAI API）
-
-### 后端启动
-
-```bash
-# 1. 安装依赖
-cd server
-pip install -r requirements.txt
-
-# 2. 启动 MCP 服务（工具服务）
-python mcp_module/start.py
-
-# 3. 新开终端，启动应用服务
-python app.py
-```
-
-后端服务：
-
-- MCP 服务: <http://localhost:8080/mcp>
-- 应用服务: <http://localhost:5000>
-
-### 前端启动
-
-```bash
-cd client
-npm install
-npm run dev
-```
-
-前端服务：
-
-- 智能体界面: <http://localhost:5173>
-- 向量库管理: <http://localhost:5174>
-
-### Docker 部署
-
-```bash
-cd server
-docker-compose up -d
-```
-
-服务端口：
-
-- redis: 6379
-- mcp: 8080
-- app: 8000
-- db: 5001
-- frontend: 5174
-
-访问地址：
-
-- 智能体: <http://localhost:8000>
-- 向量库管理: <http://localhost:5174>
-
-## 配置中心
-
-配置中心提供可视化的管理界面，支持知识库、MCP 服务器、技能的动态配置和管理。
-
-### 配置中心架构
+**使用示例**：
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     前端配置中心 (React + Zustand)                │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌───────────┐ │
-│  │  Sidebar   │  │DatabasePanel│  │  MCPPanel │  │SkillPanel │ │
-│  └────────────┘  └────────────┘  └────────────┘  └───────────┘ │
-└──────────────────────────────┼──────────────────────────────────┘
-                               │ HTTP API
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     后端配置 API (Flask)                          │
-│  /mcp/servers  →  MCP 服务器 CRUD                                │
-│  /skills       →  技能安装/删除                                   │
-│  /db/*         →  知识库管理                                      │
-└──────────────────────────────┼──────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     配置文件存储                                  │
-│  config/mcp_servers.yaml     →  MCP 服务器配置                    │
-│  config/prompt_config.yaml   →  Prompt 模板配置                   │
-│  knowledge_base/databases.json →  知识库元数据                    │
-│  skills/*/SKILL.md           →  技能定义                          │
-└─────────────────────────────────────────────────────────────────┘
+用户: "帮我创建明天下午3点的会议日程"
+  → intent_recognize → mcp:dingtalk_schedule_create
+  → mcp_expert → 调用钉钉 API 创建日程
+  → merge → "已为您创建明天下午3点的会议日程"
 ```
 
-### 功能模块
-
-配置中心包含以下管理功能：
-
-| 功能                 | 说明                           |
-| ------------------ | ---------------------------- |
-| **技能管理**           | 安装、卸载、配置技能，可通过管理页面动态添加新技能    |
-| **MCP 工具配置**       | 添加、删除 MCP 服务器，配置 MCP 工具连接参数  |
-| **数据库管理（RAG 向量库）** | 创建、删除向量数据库，上传文档，管理知识库        |
-| **钉钉文字仓颉编辑器**      | 集成钉钉文字仓颉编辑器，支持 Word 文档在线预览   |
-| **钉钉表格纵横 SDK**     | 集成钉钉表格纵横 SDK，支持 Excel 文件在线预览 |
-| **PDF 文件预览**       | 支持 PDF 文件在线预览，无需下载即可查看文档内容   |
-
-### 技能管理
-
-通过配置中心可以：
-
-- **安装技能**: 从预置技能列表中选择安装，或导入自定义技能
-- **卸载技能**: 删除不需要的技能
-
-### MCP 工具配置
-
-通过配置中心可以：
-
-- **添加 MCP 服务器**: 输入服务器地址和认证信息，自动连接
-- **删除 MCP 服务器**: 移除不需要的 MCP 服务器连接
-- **工具列表**: 查看已连接 MCP 服务器提供的工具
-
-### 数据库管理（RAG 向量库）
-
-通过配置中心可以：
-
-- **创建知识库**: 创建新的向量数据库，设置名称和描述
-- **删除知识库**: 删除不需要的知识库及其索引数据
-- **上传文档**: 上传 .txt、.pdf、.docx 格式的文档，自动向量化
-
-### 钉钉文字仓颉编辑器
-
-集成钉钉文字仓颉编辑器，提供文档在线预览能力。
-
-官网： `https://page.dingtalk.com/app/we-editor/site/index.html?spm=a2q1e.24441682.0.0.202e789eXdrRGA`
-
-功能特性：
-
-- **Word 文档预览**: 在线预览 .doc、.docx 格式文档，无需下载
-- **格式保留**: 完整保留文档格式、样式、表格等元素
-- **高清渲染**: 保持文档原始排版和清晰度
-
-### 钉钉表格纵横 SDK
-
-集成钉钉表格纵横 SDK，提供表格在线预览能力。
-
-官网： `https://page.dingtalk.com/app/alidocs/zongheng-site/index.html#/`
-
-功能特性：
-
-- **Excel 文件预览**: 在线预览 .xls、.xlsx 格式文件，支持复杂表格
-- **格式兼容**: 完美兼容 Excel 各种格式和功能
-- **高清渲染**: 保持表格原始排版和清晰度
-
-### PDF 文件预览
-
-支持 PDF 文件的在线预览功能：
-
-- **PDF 文档预览**: 在线预览 .pdf 格式文件，无需下载即可查看
-- **高清渲染**: 保持文档原始排版和清晰度
-- **快速加载**: 优化加载速度，提升用户体验
-- **多页浏览**: 支持多页 PDF 文档的流畅浏览
-
-### 访问配置中心
-
-配置中心前端界面访问地址：`http://localhost:5174`（向量库管理界面）
-
-## 配置说明
-
-### 环境变量 (.env)
-
-```env
-# AI API 配置
-API_KEY=your_api_key
-BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-MODEL=qwen3.5-flash
-EMBEDDING_MODEL=text-embedding-v3
-
-# 向量数据库配置
-VECTOR_STORE_TYPE=chroma
-VECTOR_STORE_PERSIST_DIRECTORY=db/chroma
-VECTOR_STORE_COLLECTION_NAME=knowledge_base
-
-# 检查点存储配置
-CHECKPOINT_STORAGE=memory
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_DB=0
-REDIS_PASSWORD=
-
-# MCP 配置
-MCP_HOST=0.0.0.0
-MCP_PORT=8080
-MCP_SERVERS=[{"name":"default","url":"http://localhost:8080/mcp"}]
-
-# 钉钉配置（可选）
-DINGTALK_CLIENT_ID=your_app_key
-DINGTALK_CLIENT_SECRET=your_app_secret
-```
-
-### 检查点存储
-
-系统支持两种检查点存储方式：
-
-| 存储类型        | 适用场景  | 特点              | 配置                          |
-| ----------- | ----- | --------------- | --------------------------- |
-| MemorySaver | 开发/测试 | 内存存储，重启丢失       | `CHECKPOINT_STORAGE=memory` |
-| RedisSaver  | 生产环境  | Redis 持久化，支持分布式 | `CHECKPOINT_STORAGE=redis`  |
-
-**Redis 启动方式**：
-
-```bash
-# 使用 Docker（推荐）
-docker run -d -p 6379:6379 redis
-
-# 或本地安装的 Redis
-redis-server
-```
-
-**检查点工厂模式**：
-
-```python
-# 注册存储实现
-CheckpointFactory.register("memory", MemorySaver)
-CheckpointFactory.register("redis", RedisSaver)
-
-# 构建实例
-checkpointer = CheckpointFactory.build(name="memory")
-```
-
-## API 接口
-
-### 对话接口
-
-```http
-POST /chat
-Content-Type: application/json
-
-{
-  "message": "用户输入",
-  "session_id": "optional-session-id"
-}
-```
-
-**响应示例**：
-
-```json
-{
-  "reply": "AI回复内容",
-  "feeling": {"feeling": "cheerful", "score": 3},
-  "tool_calls": [],
-  "session_id": "会话ID",
-  "finished": false
-}
-```
-
-### SSE 流式对话
-
-采用 **AG-UI (Agent-User Interaction) 协议**，标准化 AI 智能体与用户界面通信的事件流。
-
-```http
-POST /chat/stream
-Content-Type: application/json
-
-{
-  "message": "用户输入",
-  "session_id": "optional-session-id"
-}
-```
-
-**事件类型**（`EventType` 枚举）：
-
-| 事件类型                   | 说明       | 字段                           |
-| ---------------------- | -------- | ---------------------------- |
-| `STEP_STARTED`         | 步骤开始     | step, label, icon            |
-| `STEP_FINISHED`        | 步骤完成     | step, label, icon, detail    |
-| `TEXT_MESSAGE_CONTENT` | 文本内容流式输出 | content, node                |
-| `RUN_FINISHED`         | 运行完成     | answer, feeling, session\_id |
-| `RUN_ERROR`            | 运行错误     | error                        |
-
-**多流模式**（LangGraph）：
-
-```python
-stream_mode=["updates", "custom", "messages"]
-```
-
-- `updates`: 节点完成事件（展示思考步骤）
-- `custom`: 节点内部自定义进度事件（通过 `get_stream_writer` 推送）
-- `messages`: LLM 逐 token 输出（打字机效果）
-
-### 向量库管理 API
-
-```http
-GET    /api/databases           # 获取知识库列表
-POST   /api/databases           # 创建知识库
-GET    /api/databases/{name}    # 获取知识库详情
-PUT    /api/databases/{name}    # 更新知识库信息
-DELETE /api/databases/{name}    # 删除知识库
-POST   /api/databases/{name}/upload  # 上传文档
-```
-
-### MCP 配置 API
-
-```http
-GET  /api/mcp/servers     # 获取 MCP 服务器列表
-POST /api/mcp/servers     # 添加 MCP 服务器
-DELETE /api/mcp/servers/{name}  # 删除 MCP 服务器
-```
-
-### 技能配置 API
-
-```http
-GET  /api/skills          # 获取技能列表
-POST /api/skills/install  # 安装技能
-DELETE /api/skills/{name} # 删除技能
-```
-
-## 自定义扩展
-
-### 添加新 Expert 插件
-
-新增 Expert 只需 2 步，框架代码零改动：
-
-```python
-# 1. 创建插件文件 server/modules/langgraph/multi_agent/plugins/my_plugin.py
-from modules.langgraph.multi_agent.plugin_base import ExpertPlugin
-from modules.langgraph.multi_agent.meta import ExpertMeta
-
-class MyPlugin(ExpertPlugin):
-    def __init__(self):
-        self._meta = ExpertMeta(
-            name="my_expert",
-            category="my_category",
-            description="我的自定义 Expert",
-            icon="🚀",
-            label="自定义 Agent",
-        )
-
-    @property
-    def meta(self) -> ExpertMeta:
-        return self._meta
-
-    def on_activate(self, context):
-        ai_client = context["ai_client"]
-        # 创建 Agent、加载工具...
-
-    def execute(self, state):
-        # 执行业务逻辑...
-        return self._build_result(answer, state)
-
-# 2. 注册插件（server/modules/langgraph/agent.py）
-from modules.langgraph.multi_agent.plugins.my_plugin import MyPlugin
-registry.register(MyPlugin())
-
-# 完成！框架自动注册图节点、边、路由映射、能力描述
-```
-
-### 修改系统提示词
-
-编辑 `backend/modules/prompt/__init__.py` 中的 `PromptClass` 类，修改 `SystemPrompt` 和 `MOODS` 配置。
-
-### 自定义 FewShot 示例
-
-```python
-DEFAULT_FEW_SHOT_EXAMPLES = [
-    {"user_query": "你好", "assistant_response": "您好！请问有什么可以帮助您的？"},
-    {"user_query": "你们有什么产品?", "assistant_response": "我们提供多种优质产品..."},
-]
-```
-
-### 添加新工具
-
-```python
-# backend/mcp_module/tools/my_tool.py
-from mcp_module.tools.registry import register_tool
-
-@register_tool(
-    name="my_tool",
-    description="我的自定义工具",
-    parameters=[...],
-    return_type="string"
-)
-def my_tool(param1: str) -> str:
-    return "工具执行结果"
-```
-
-### 添加新技能
-
-```bash
-mkdir server/skills/my-skill
-
-cat > server/skills/my-skill/SKILL.md << 'EOF'
-# my-skill
-
-## Description
-技能描述
-
-## Instructions
-执行指令...
-EOF
-```
-
-### 更新知识库
-
-```bash
-# 在 backend/knowledge_base/ 添加或修改文档
-cp document.pdf server/knowledge_base/my_kb/
-
-# 重启服务，系统自动重新向量化
-```
-
-### 扩展 RAG 模块
-
-```python
-# 自定义检索器
-class MyRetriever(BaseRetriever):
-    def retrieve(self, query: str, top_k: int = 5) -> List[Document]:
-        # 自定义检索逻辑
-        return documents
-
-# 注册到工厂
-RetrieverFactory.register("my_retriever", MyRetriever)
-```
+---
 
 ## 技术栈
 
 ### 后端
 
-| 类别       | 技术                    | 版本    | 说明            |
-| -------- | --------------------- | ----- | ------------- |
-| Web 框架   | Flask                 | 3.0+  | RESTful API   |
-| Agent 框架 | LangChain             | 1.0+  | Agent 和工具框架   |
-| 状态编排     | LangGraph             | 1.0+  | 状态图工作流        |
-| 向量数据库    | ChromaDB              | 0.5+  | 默认向量存储        |
-| 向量数据库    | Milvus                | 2.4+  | 可选向量存储        |
-| 工具协议     | MCP                   | 1.0+  | 工具服务协议        |
-| 状态持久化    | Redis                 | 7.2+  | 可选检查点存储       |
-| AI SDK   | OpenAI SDK            | 1.40+ | 兼容阿里云百炼       |
-| 技能框架     | pydantic-ai-skills    | 0.10+ | 技能加载          |
-| 重排序      | sentence-transformers | 3.2.0 | 检索重排序         |
-| 钉钉集成     | dingtalk-stream       | 0.24+ | 钉钉 Stream API |
+| 类别 | 技术 |
+|------|------|
+| Web 框架 | Flask + Flask-CORS + Flask-Limiter |
+| Agent 框架 | LangGraph 1.0+ (StateGraph, Checkpoint, Send API) |
+| LLM 集成 | LangChain 1.0+ / OpenAI SDK (兼容 Qwen, GPT 等) |
+| 向量数据库 | ChromaDB / Milvus Lite |
+| MCP 协议 | FastMCP + Streamable HTTP |
+| 钉钉集成 | dingtalk-stream (纵横 SDK) |
+| 状态持久化 | Redis / Memory Checkpoint |
+| 文档解析 | pypdf, python-docx, pandas, openpyxl |
+| 服务注册 | Consul |
+| 容器化 | Docker + Docker Compose |
 
 ### 前端
 
-| 类别       | 技术        | 版本    | 说明         |
-| -------- | --------- | ----- | ---------- |
-| UI 框架    | React     | 18.2  | 组件化 UI     |
-| 构建工具     | Vite      | 5.0+  | 快速构建       |
-| 状态管理     | Zustand   | 5.0+  | 轻量状态管理     |
-| HTTP 请求  | Axios     | 1.16+ | API 请求     |
-| PDF 预览   | react-pdf | 10.4+ | PDF 文件预览   |
-| Word 预览  |  钉钉仓颉编辑器  | 1.7+  | Word 文件预览  |
-| Excel 预览 | 钉钉纵横 SDK  | 2.15+ | Excel 文件预览 |
+| 类别 | 技术 |
+|------|------|
+| 框架 | React 18 + Vite 5 |
+| 状态管理 | Zustand 5 |
+| HTTP | Axios |
+| 文件预览 | exceljs, mammoth-plus-plus-2, react-pdf |
+| 部署 | Nginx + Docker |
 
-### AI 服务
+---
 
-| 类别     | 服务                | 说明       |
-| ------ | ----------------- | -------- |
-| 对话模型   | qwen3.5-flash     | 阿里云百炼    |
-| 向量化模型  | text-embedding-v3 | 文档向量化    |
-| API 平台 | 阿里云百炼 / OpenAI    | 兼容两种 API |
+## 配置说明
 
-## 钉钉智能会话助手
+### 环境变量
 
-系统已完成钉钉智能会话助手的开发和测试验证。
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `OPENAI_API_KEY` | LLM API 密钥 | — |
+| `OPENAI_BASE_URL` | LLM API 地址 | https://api.openai.com/v1 |
+| `REDIS_HOST` | Redis 主机地址 | localhost |
+| `REDIS_PORT` | Redis 端口 | 6379 |
+| `MCP_SERVER_URL` | MCP 服务器地址 | http://localhost:8001 |
+| `CONSUL_HOST` | Consul 主机地址 | localhost |
+| `DINGTALK_APP_KEY` | 钉钉应用 AppKey | — |
+| `DINGTALK_APP_SECRET` | 钉钉应用 AppSecret | — |
 
-### 功能特性
+### 配置文件
 
-- **智能问答**: 基于知识库的智能问答服务
-- **日程管理**: 创建、查询、删除钉钉日程
-- **待办事项**: 创建钉钉待办任务
-- **情绪感知**: 根据用户情绪调整回复语气
+| 文件 | 说明 |
+|------|------|
+| `server/config/config.yaml` | 主配置文件（LLM、向量库、Redis 等） |
+| `server/docker-compose.yml` | Docker 服务编排配置 |
+| `client/vite.config.js` | 前端构建配置 |
 
-### 钉钉部署配置
+---
 
-1. 在钉钉开放平台创建企业内部应用
-2. 配置应用密钥（Client ID / Client Secret）
-3. 在 `.env` 文件中配置钉钉参数
-4. 部署服务并配置钉钉机器人回调地址
+## 项目结构
 
-```env
-# 钉钉配置
-DINGTALK_CLIENT_ID=your_app_key
-DINGTALK_CLIENT_SECRET=your_app_secret
+```
+LangGraphAgent/
+├── server/                          # Python 后端服务
+│   ├── app.py                       # Flask 主应用入口
+│   ├── db.py                        # 向量库管理 API
+│   ├── DingWebHook.py               # 钉钉 Stream 机器人入口
+│   ├── docker-compose.yml           # Docker Compose 编排
+│   ├── requirements.txt             # Python 依赖
+│   ├── modules/                     # 核心功能模块
+│   │   ├── langgraph/               # LangGraph 状态图
+│   │   │   ├── agent.py             # 主入口（组件初始化、插件注册、图编译）
+│   │   │   ├── state.py             # 状态定义
+│   │   │   ├── context_builder.py   # 上下文构建器
+│   │   │   ├── nodes/               # 前置节点（feeling, intent, steps）
+│   │   │   ├── multi_agent/         # 多 Agent 协作模块
+│   │   │   │   ├── graph.py         # 主图构建器
+│   │   │   │   ├── states.py        # MultiAgentState（自定义 reducer）
+│   │   │   │   ├── manifest.py      # PLUGIN.yaml 解析器 + 数据类
+│   │   │   │   ├── plugin_base.py   # ExpertPlugin 抽象基类
+│   │   │   │   ├── plugin_registry.py # PluginRegistry 插件注册表
+│   │   │   │   ├── meta.py          # ExpertMeta 数据类
+│   │   │   │   ├── nodes/           # Supervisor + Merge 节点
+│   │   │   │   ├── plugins/         # 业务插件
+│   │   │   │   │   ├── mcp_plugin/  # MCP 插件（PLUGIN.yaml + plugin.py）
+│   │   │   │   │   ├── skill_plugin/
+│   │   │   │   │   ├── rag_plugin/
+│   │   │   │   │   └── chat_plugin/
+│   │   │   │   └── planner/         # Planner 分解 + 调度
+│   │   │   │       ├── decompose.py           # 分解节点（纯编排者）
+│   │   │   │       ├── dispatch.py            # 波次调度节点
+│   │   │   │       ├── executable_intent_decomposer.py  # 可执行意图分解器
+│   │   │   │       ├── complex_plan_decomposer.py       # 复杂规划分解器
+│   │   │   │       ├── models.py              # Pydantic 结构化输出模型
+│   │   │   │       └── prompts.py             # Prompt 模板
+│   │   │   └── reflection/         # 反思校验器
+│   │   ├── intent/                  # 意图识别模块
+│   │   │   ├── intent_types.py      # 意图类型定义
+│   │   │   ├── intent_registry.py   # 意图注册表（动态注册）
+│   │   │   ├── recognizer.py        # LLM 意图识别器（L3）
+│   │   │   └── router.py            # 分层漏斗路由器（L1+L2+L3）
+│   │   ├── rag/                     # 模块化 RAG 框架
+│   │   │   ├── rag.py               # RAG 工作流核心
+│   │   │   ├── indexer/             # 索引模块（Chroma / Milvus）
+│   │   │   ├── retriever/           # 检索模块（Simple / Reranking / Filtered）
+│   │   │   ├── generator/           # 生成模块（Stuff / MapReduce / Refine）
+│   │   │   └── router/              # 路由模块（Simple / LLMRouter）
+│   │   ├── skill/                   # 技能系统
+│   │   │   ├── manager.py           # 技能管理器（统一入口）
+│   │   │   ├── loader.py            # SKILL.md 加载器
+│   │   │   ├── matcher.py           # 技能匹配器（向量语义）
+│   │   │   ├── executor.py          # 技能执行器
+│   │   │   └── indexer.py           # 技能向量索引
+│   │   ├── feeling/                 # 情绪感知模块
+│   │   ├── checkpoint/              # 检查点存储（Memory / Redis）
+│   │   ├── document_loaders/        # 文档加载器（PDF / Word / Excel / Text）
+│   │   ├── rate_limit/              # 限流模块
+│   │   ├── sse/                     # SSE 流式响应（AG-UI 协议）
+│   │   ├── ai_client.py             # AI 客户端（兼容 OpenAI SDK）
+│   │   └── factory.py               # 工厂函数（组件初始化）
+│   ├── mcp_module/                  # MCP 工具服务（独立部署）
+│   │   ├── mcp_server.py            # MCP 服务器核心（FastMCP + Streamable HTTP）
+│   │   ├── mcp_service.py           # MCP 服务封装
+│   │   ├── mcp_config_manager.py    # MCP 配置管理
+│   │   └── tools/                   # 工具插件目录
+│   │       ├── registry.py          # 工具注册表
+│   │       ├── weather_plugin.py    # 天气查询
+│   │       ├── submit_form_plugin.py # 表单提交
+│   │       └── dingtalk/            # 钉钉工具（纵横 SDK）
+│   │           ├── dingtalk_client.py           # 钉钉 API 客户端
+│   │           ├── dingtalk_schedule_create_plugin.py
+│   │           ├── dingtalk_schedule_query_plugin.py
+│   │           ├── dingtalk_schedule_delete_plugin.py
+│   │           └── dingtalk_todo_plugin.py
+│   ├── knowledge_base/              # 知识库管理模块
+│   ├── skills/                      # 技能库（SKILL.md 格式）
+│   ├── user/                        # 用户管理模块
+│   ├── api/                         # API 接口层
+│   ├── config/                      # 配置文件
+│   └── gateway/                     # 网关配置（Nginx）
+├── client/                          # React 前端 (Vite + Zustand)
+│   ├── src/
+│   │   ├── components/              # React 组件
+│   │   │   ├── chat/                # 对话组件（ChatArea, Header, InputArea）
+│   │   │   ├── config/              # 配置面板（MCP, Skill, Database, Sidebar）
+│   │   │   └── vectorDbManagerComponents/  # 知识库管理组件
+│   │   ├── preview/                 # 文件预览组件
+│   │   │   ├── previews/            # Excel / PDF / Word / Text 预览
+│   │   │   └── utils/               # excelConverter, wordConverter
+│   │   ├── stores/                  # 状态管理（Zustand）
+│   │   ├── api/                     # API 接口封装
+│   │   ├── hooks/                   # 自定义 Hooks
+│   │   └── constants/               # 常量定义
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── Dockerfile
+│   └── nginx.conf
+└── resources/                       # 资源文件（截图）
 ```
 
-## 功能展示
+---
 
-### Docker 容器化部署
+## 部署架构
 
-系统支持 Docker 容器化部署，通过 `docker-compose` 一键启动所有服务：
+```
+Docker Compose 编排 6 个服务：
 
-![Docker 服务架构](resources/docker.png)
+┌──────────┐  ┌──────────┐  ┌──────────┐
+│ Gateway  │  │  Client  │  │  Consul  │
+│ (Nginx)  │  │ (React)  │  │ (注册中心) │
+└────┬─────┘  └──────────┘  └────┬─────┘
+     │                           │
+┌────▼─────┐  ┌──────────┐  ┌───▼──────┐
+│   App    │  │   MCP    │  │  Redis   │
+│ (Flask)  │  │ (FastMCP)│  │ (缓存)    │
+└────┬─────┘  └──────────┘  └──────────┘
+     │
+┌────▼─────┐
+│   DB     │
+│ (向量库)  │
+└──────────┘
+```
 
-### 复杂任务规划
+---
 
-系统支持基于 LLM 的智能任务规划，根据问题难度自动生成多步骤执行计划：
+## 关键设计决策
 
-| 难度等级 | 描述        | 任务数量 |
-| ---- | --------- | ---- |
-| 1级   | 简单事实查询    | 1个任务 |
-| 2级   | 需要简单推理    | 1个任务 |
-| 3级   | 需要多步骤分析   | 2个任务 |
-| 4级   | 需要综合多领域知识 | 3个任务 |
-| 5级   | 需要创造性解决方案 | 4个任务 |
+### 1. Orchestrator-Worker 模式
 
-### 测试验证截图
+Planner 拆分为 Decompose（分解）和 Dispatch（调度）两个节点，而非单一 Agent：
+- Decompose 只负责分解任务，不执行
+- Dispatch 按波次调度，支持依赖关系
+- Expert 执行完回到 Dispatch，而非直接到 Merge
 
-#### 核心功能展示
+### 2. 独立分解策略
 
-![智能问答与知识库(RAG)、日程管理(MCP)、工具调用与任务规划](resources/drawnix-base.png)
+每个 complex_plan 意图独立调用 LLM 分解，而非合并分解：
+- LLM 注意力 100% 聚焦单个目标
+- 分解质量不受其他意图上下文干扰
 
-#### 复杂任务规划与执行
+### 3. `__subtask_idx__` 路由标记
 
-![复杂任务规划与执行](resources/drawnix-plan.png)
+通过 `__subtask_idx__` 区分 Expert 的调度来源：
+- Supervisor 调度 → Expert → merge
+- Planner 调度 → Expert → planner_dispatch（回到波次调度）
 
-#### 技能使用（SKILL）
+### 4. Chat 子任务跳过润色
 
-![技能使用展示](resources/drawnix.png)
+Planner 分解的 chat 子任务在 ChatExpert 中只生成纯内容，不润色：
+- 避免每个子任务独立润色导致内容丢失
+- 润色统一交给 MergeNode 处理
 
-#### 配置管理界面（支持预览 Word/Excel/PDF 等文件）
+### 5. Manifest 驱动消除硬编码
 
-![配置管理界面](resources/agnet-config.png)
+所有原本硬编码的映射关系（CATEGORY_EXPERT_MAP、PLANNER_DISPATCH_TARGETS、DECOMPOSE_PROMPT 能力描述等）均从 PLUGIN.yaml 动态生成，新增 Expert 时框架代码零改动。
+
+---
 
 ## 项目演进
 
-### 已完成功能
+### 已完成
 
-- ✅ MCP 架构迁移
-- ✅ 工具独立部署
-- ✅ Streamable HTTP 支持
-- ✅ 统一日志模块
-- ✅ 集中配置管理
-- ✅ 模块化 RAG 框架
-- ✅ 限流模块集成
-- ✅ 多知识库支持
-- ✅ 智能路由（LLMRouter）
-- ✅ 查询扩展功能
-- ✅ LangGraph 架构迁移
-- ✅ 状态持久化检查点
-- ✅ 智能任务规划（Task Planner）
-- ✅ 技能系统（Skill System）
-- ✅ 技能匹配与执行引擎
-- ✅ 意图识别系统（分层漏斗路由）
-- ✅ 多意图识别
-- ✅ 多 Agent 协作（Supervisor + Expert + Planner 编排）
-- ✅ Planner 分解+波次调度（Orchestrator-Worker 模式）
-- ✅ 插件化架构（ExpertPlugin + PluginRegistry，新增 Expert 零框架改动）
-- ✅ 旧架构代码清理
-- ✅ 钉钉集成（日程、待办）
-- ✅ Docker 容器化部署
-- ✅ 可视化配置中心
-- ✅ 文件预览（Word/Excel/PDF）
+- MCP 架构迁移 + 工具独立部署（Streamable HTTP）
+- 模块化 RAG 框架（可插拔索引器/检索器/生成器）
+- LangGraph 架构迁移 + 状态持久化检查点
+- 意图识别系统（分层漏斗路由 + 多意图识别）
+- 多 Agent 协作（Supervisor + Expert + Planner 编排）
+- Planner 分解 + 波次调度（Orchestrator-Worker 模式）
+- 插件化架构（ExpertPlugin + PluginRegistry + Manifest 驱动）
+- 技能系统（SKILL.md 匹配 + 向量语义索引）
+- 钉钉集成（纵横 SDK Stream + 仓颉编辑器 MCP 工具）
+- 情绪感知 + 反思校验
+- Docker 容器化部署 + Consul 服务注册
+- 可视化配置中心 + 文件预览（Word/Excel/PDF）
+- 统一日志模块 + 限流模块 + SSE 流式响应（AG-UI 协议）
 
 ### 后续优化方向
 
-- 🔄 数据库替代 JSON 存储
-- 🔄 API 安全验证
-- 🔄 L2 向量语义匹配实现
-- 🔄 更多技能支持
-- 🔄 Merge 润色优化（分段润色减少耗时）
-- 🔄 波次调度优化（complex_plan 链独立并行路径，减少等待时间）
-
-## License
-
-MIT License
+- 数据库替代 JSON 存储
+- API 安全验证
+- L2 向量语义匹配实现
+- 更多技能支持
+- Merge 润色优化（分段润色减少耗时）
+- 波次调度优化（complex_plan 链独立并行路径）
