@@ -18,6 +18,7 @@ from modules.langgraph.multi_agent.helpers import (
     build_hints_input,
     build_base_context,
     build_intent_results,
+    push_progress_event,
 )
 from modules.langgraph.multi_agent.tools.skill_tools import get_skill_tools, skill_execute
 from modules.langgraph.multi_agent.expert_agent_factory import SKILL_SYSTEM_PROMPT, _build_expert_prompt
@@ -121,6 +122,13 @@ class SkillPlugin(ExpertPlugin):
         query = state["query"]
         intents = filter_intents_by_category(state.get("intents", []), self.meta.category)
 
+        # 推送技能执行进度
+        skill_names = [i.get("target", "").replace("skill:", "") for i in intents]
+        if skill_names:
+            push_progress_event(self.meta, f"执行技能：{', '.join(skill_names)}")
+        else:
+            push_progress_event(self.meta, "选择合适的技能...")
+
         # 从 Manifest 获取 prompt 模板
         input_text = build_hints_input(
             query, intents,
@@ -135,7 +143,7 @@ class SkillPlugin(ExpertPlugin):
         skill_name = self._extract_skill_name(intents)
         context = build_base_context(state, skill_name=skill_name)
 
-        answer = self._invoke_agent(self._agent, input_text, context)
+        answer = self._invoke_agent(self._agent, input_text, context, started_detail=f"处理：{query[:40]}")
         log(f"[SkillPlugin] 完成: {answer[:50]}...", "Plugin")
 
         intent_results = build_intent_results(intents, answer, self.meta.category)

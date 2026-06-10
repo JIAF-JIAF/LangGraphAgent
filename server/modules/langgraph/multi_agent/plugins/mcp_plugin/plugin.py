@@ -17,6 +17,7 @@ from modules.langgraph.multi_agent.helpers import (
     build_hints_input,
     build_base_context,
     build_intent_results,
+    push_progress_event,
 )
 from modules.langgraph.multi_agent.tools.mcp_tools import get_mcp_tools, mcp_execute
 from modules.langgraph.multi_agent.expert_agent_factory import MCP_SYSTEM_PROMPT, _build_expert_prompt
@@ -101,6 +102,13 @@ class MCPPlugin(ExpertPlugin):
         query = state["query"]
         intents = filter_intents_by_category(state.get("intents", []), self.meta.category)
 
+        # 推送工具调用进度
+        tool_names = [i.get("target", "").replace("mcp:", "") for i in intents]
+        if tool_names:
+            push_progress_event(self.meta, f"调用工具：{', '.join(tool_names)}")
+        else:
+            push_progress_event(self.meta, "选择合适的工具...")
+
         # 从 Manifest 获取 prompt 模板
         input_text = build_hints_input(
             query, intents,
@@ -112,7 +120,7 @@ class MCPPlugin(ExpertPlugin):
         log(f"[MCPPlugin] 处理 MCP 意图: {len(intents)} 个, 输入: {input_text[:50]}...", "Plugin")
 
         context = build_base_context(state)
-        answer = self._invoke_agent(self._agent, input_text, context)
+        answer = self._invoke_agent(self._agent, input_text, context, started_detail=f"处理：{query[:40]}")
         log(f"[MCPPlugin] 完成: {answer[:50]}...", "Plugin")
 
         intent_results = build_intent_results(intents, answer, self.meta.category)

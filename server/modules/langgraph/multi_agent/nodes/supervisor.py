@@ -29,8 +29,10 @@ def supervisor_node(state: Dict[str, Any]) -> Dict[str, Any]:
         重置 agent_results 和 planner 相关字段的状态更新字典
     """
     writer = get_stream_writer()
-    writer(Step.SUPERVISOR.started_event())
-    writer(Step.SUPERVISOR.completed_event(detail="routing → planner_decompose"))
+    intents = state.get("intents", [])
+    categories = sorted(set(i.get("category", "") for i in intents)) if intents else []
+    writer(Step.SUPERVISOR.started_event(detail=f"调度意图类别：{', '.join(categories) or '无'}"))
+    writer(Step.SUPERVISOR.completed_event(detail="→ planner_decompose"))
     return {
         "agent_results": None,          # 重置（add_agent_results reducer: None → []）
         "planned_subtasks": [],          # 重置（keep_last reducer: 空列表覆盖旧值）

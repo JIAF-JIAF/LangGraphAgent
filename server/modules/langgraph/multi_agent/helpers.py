@@ -197,7 +197,7 @@ def push_step_event(meta: ExpertMeta, status: str, detail: str = ""):
 
     Args:
         meta: 插件元信息（包含 name/label/icon）
-        status: 状态（"started" / "completed" / "error"）
+        status: 状态（"started" / "progress" / "completed" / "error"）
         detail: 详细信息（可选）
     """
     writer = get_stream_writer()
@@ -210,6 +210,24 @@ def push_step_event(meta: ExpertMeta, status: str, detail: str = ""):
     if detail:
         event["detail"] = detail
     writer(event)
+
+
+def push_progress_event(meta: ExpertMeta, detail: str):
+    """
+    推送 SSE 中间进度事件
+
+    Args:
+        meta: 插件元信息（包含 name/label/icon）
+        detail: 进度详情（必填）
+    """
+    writer = get_stream_writer()
+    writer({
+        "step": meta.name,
+        "status": "progress",
+        "label": meta.label,
+        "icon": meta.icon,
+        "detail": detail,
+    })
 
 
 # ===== 无工具提示 =====

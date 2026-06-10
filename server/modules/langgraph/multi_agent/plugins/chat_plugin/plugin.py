@@ -80,7 +80,7 @@ class ChatPlugin(ExpertPlugin):
         log(f"[ChatPlugin] 处理对话: {actual_query[:30]}...", "Plugin")
 
         context = build_base_context(state)
-        answer = self._invoke_agent(self._agent, actual_query, context)
+        answer = self._invoke_agent(self._agent, actual_query, context, started_detail=f"处理：{query[:40]}")
         log(f"[ChatPlugin] 完成: {answer[:50]}...", "Plugin")
 
         # Chat 特有：无 intent_results

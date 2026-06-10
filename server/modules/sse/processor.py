@@ -13,6 +13,13 @@ from .events import EventType, StepStatus
 class SSEEventProcessor:
     """SSE 事件处理器：将 LangGraph 多流输出转换为 AG-UI 标准事件"""
 
+    # StepStatus → EventType 映射，消除 if-elif 链
+    _STATUS_TO_EVENT: dict[StepStatus, EventType] = {
+        StepStatus.STARTED: EventType.STEP_STARTED,
+        StepStatus.PROGRESS: EventType.STEP_PROGRESS,
+        StepStatus.COMPLETED: EventType.STEP_FINISHED,
+    }
+
     def __init__(self):
         self.final_answer = ""
         self.final_feeling = {"feeling": "default", "score": 5}
@@ -41,7 +48,7 @@ class SSEEventProcessor:
         """
         处理 custom 流事件（来自 get_stream_writer）
 
-        将节点内部推送的自定义进度事件转换为 AG-UI STEP_STARTED / STEP_FINISHED 事件
+        将节点内部推送的自定义进度事件转换为 AG-UI STEP_STARTED / STEP_PROGRESS / STEP_FINISHED 事件
 
         Args:
             custom_data: get_stream_writer 推送的事件字典
@@ -57,29 +64,19 @@ class SSEEventProcessor:
         """
         step = custom_data.get("step", "unknown")
         status = custom_data.get("status", StepStatus.STARTED)
-        label = custom_data.get("label", step)
-        icon = custom_data.get("icon", "🔄")
-        detail = custom_data.get("detail", "")
+        event_type = self._STATUS_TO_EVENT.get(status)
 
-        if status == StepStatus.STARTED:
-            return {
-                "type": EventType.STEP_STARTED,
-                "step": step,
-                "label": label,
-                "icon": icon,
-                "session_id": session_id,
-            }
-        elif status == StepStatus.COMPLETED:
-            return {
-                "type": EventType.STEP_FINISHED,
-                "step": step,
-                "label": label,
-                "icon": icon,
-                "detail": detail,
-                "session_id": session_id,
-            }
+        if event_type is None:
+            return None
 
-        return None
+        return {
+            "type": event_type,
+            "step": step,
+            "label": custom_data.get("label", step),
+            "icon": custom_data.get("icon", "🔄"),
+            "detail": custom_data.get("detail", ""),
+            "session_id": session_id,
+        }
 
     def _process_updates(self, updates_data: dict, session_id: str) -> dict | None:
         """

@@ -36,12 +36,12 @@ class IntentRecognizeNode:
         query = state["query"]
         query_preview = query[:30] if len(query) > 30 else query
 
-        writer(Step.INTENT_RECOGNIZE.started_event())
+        writer(Step.INTENT_RECOGNIZE.started_event(detail=f"识别用户意图：{query_preview}"))
         log(f"[节点: {Step.INTENT_RECOGNIZE.step}] 开始意图识别: {query_preview}...", "LangGraph")
 
         if not self._router:
             log(f"[节点: {Step.INTENT_RECOGNIZE.step}] 未配置意图路由器，跳过意图识别", "LangGraph")
-            writer(Step.INTENT_RECOGNIZE.completed_event(detail="跳过"))
+            writer(Step.INTENT_RECOGNIZE.completed_event(detail="跳过（无路由器）"))
             return {
                 "intents": [],
                 "is_multi_intent": False,
@@ -60,8 +60,11 @@ class IntentRecognizeNode:
         intents_data = [intent.to_dict() for intent in intents]
         current_intent = intents_data[0] if intents_data else None
 
-        intent_types = ", ".join(i["type"] for i in intents_data) if intents_data else "无"
-        writer(Step.INTENT_RECOGNIZE.completed_event(detail=intent_types))
+        intent_desc = "、".join(
+            f"{i.get('type', '?')}({i.get('content', '')[:20]})"
+            for i in intents_data
+        ) if intents_data else "无匹配意图"
+        writer(Step.INTENT_RECOGNIZE.completed_event(detail=intent_desc))
 
         return {
             "intents": intents_data,

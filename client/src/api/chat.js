@@ -27,15 +27,16 @@ export const sendMessage = async (message, sessionId) => {
  * @param {string} message - 用户消息
  * @param {string} sessionId - 会话ID
  * @param {Object} callbacks - 回调函数
- * @param {Function} callbacks.onToken - 收到 token 时的回调 (content, node)
- * @param {Function} callbacks.onStepStarted - 思考步骤开始时的回调 (step, label, icon)
+ * @param {Function} callbacks.onStepStarted - 思考步骤开始时的回调 (step, label, icon, detail)
+ * @param {Function} callbacks.onStepProgress - 思考步骤进度更新时的回调 (step, label, icon, detail)
  * @param {Function} callbacks.onStepFinished - 思考步骤完成时的回调 (step, label, icon, detail)
+ * @param {Function} callbacks.onToken - 收到 token 时的回调 (content, node)
  * @param {Function} callbacks.onDone - 完成时的回调 (data)
  * @param {Function} callbacks.onError - 错误时的回调 (error)
  * @returns {Promise<void>}
  */
 export const sendMessageStream = async (message, sessionId, callbacks) => {
-  const { onToken, onStepStarted, onStepFinished, onDone, onError } = callbacks;
+  const { onToken, onStepStarted, onStepProgress, onStepFinished, onDone, onError } = callbacks;
 
   try {
     const response = await fetch(`${API_BASE_URL}/chat/stream`, {
@@ -75,7 +76,10 @@ export const sendMessageStream = async (message, sessionId, callbacks) => {
             
             switch (data.type) {
               case EventType.STEP_STARTED:
-                onStepStarted?.(data.step, data.label, data.icon);
+                onStepStarted?.(data.step, data.label, data.icon, data.detail);
+                break;
+              case EventType.STEP_PROGRESS:
+                onStepProgress?.(data.step, data.label, data.icon, data.detail);
                 break;
               case EventType.STEP_FINISHED:
                 onStepFinished?.(data.step, data.label, data.icon, data.detail);

@@ -17,6 +17,7 @@ from modules.langgraph.multi_agent.helpers import (
     build_hints_input,
     build_base_context,
     build_intent_results,
+    push_progress_event,
 )
 from modules.langgraph.multi_agent.tools.rag_tools import create_rag_tools
 from modules.langgraph.multi_agent.expert_agent_factory import RAG_SYSTEM_PROMPT, _build_expert_prompt
@@ -122,6 +123,13 @@ class RAGPlugin(ExpertPlugin):
         query = state["query"]
         intents = filter_intents_by_category(state.get("intents", []), self.meta.category)
 
+        # 推送检索进度
+        kb_names = [i.get("target", "").replace("knowledge_base:", "") for i in intents]
+        if kb_names:
+            push_progress_event(self.meta, f"检索知识库：{', '.join(kb_names)}")
+        else:
+            push_progress_event(self.meta, "检索知识库...")
+
         # 从 Manifest 获取 prompt 模板
         input_text = build_hints_input(
             query, intents,
@@ -133,7 +141,7 @@ class RAGPlugin(ExpertPlugin):
         log(f"[RAGPlugin] 处理 RAG 意图: {len(intents)} 个, 输入: {input_text[:50]}...", "Plugin")
 
         context = build_base_context(state)
-        answer = self._invoke_agent(self._agent, input_text, context)
+        answer = self._invoke_agent(self._agent, input_text, context, started_detail=f"处理：{query[:40]}")
         log(f"[RAGPlugin] 完成: {answer[:50]}...", "Plugin")
 
         intent_results = build_intent_results(intents, answer, self.meta.category)

@@ -114,9 +114,21 @@ const useChatStore = create((set, get) => ({
         const steps = [...(msg.steps || [])];
         const existingIdx = steps.findIndex((s) => s.step === step.step);
         if (existingIdx >= 0) {
-          steps[existingIdx] = { ...steps[existingIdx], ...step };
+          // 合并：保留已有的 progressList，更新新字段
+          const existing = steps[existingIdx];
+          const updated = { ...existing, ...step };
+          // 如果是 progress 事件，追加到 progressList
+          if (step.status === 'progress' && step.detail) {
+            updated.progressList = [...(existing.progressList || []), step.detail];
+          }
+          steps[existingIdx] = updated;
         } else {
-          steps.push(step);
+          // 新步骤：初始化 progressList
+          const newStep = { ...step, progressList: [] };
+          if (step.status === 'progress' && step.detail) {
+            newStep.progressList = [step.detail];
+          }
+          steps.push(newStep);
         }
         return { ...msg, steps };
       })
@@ -139,8 +151,11 @@ const useChatStore = create((set, get) => ({
     let fullContent = '';
 
     await sendMessageStream(message, get().sessionId, {
-      onStepStarted: (step, label, icon) => {
-        addStepToMessage(messageId, { step, label, icon, status: 'started' });
+      onStepStarted: (step, label, icon, detail) => {
+        addStepToMessage(messageId, { step, label, icon, status: 'started', detail });
+      },
+      onStepProgress: (step, label, icon, detail) => {
+        addStepToMessage(messageId, { step, label, icon, status: 'progress', detail });
       },
       onStepFinished: (step, label, icon, detail) => {
         addStepToMessage(messageId, { step, label, icon, status: 'completed', detail });

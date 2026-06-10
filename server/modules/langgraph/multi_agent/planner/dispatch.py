@@ -55,8 +55,14 @@ class PlannerDispatchNode:
             log(f"[PlannerDispatch] 所有子任务已完成（{len(completed_indices)}/{len(subtasks)}）", "MultiAgent")
             return {"__dispatch_complete__": True}
 
+        # 构建分发详情：显示分发给哪个 Expert
+        category_map = self._plugin_registry.build_category_map()
+        dispatch_desc = "、".join(
+            f"子任务{idx}→{category_map.get(subtasks[idx].get('category', ''), '?')}"
+            for idx in ready_indices
+        )
         log(f"[PlannerDispatch] 本轮就绪子任务: {ready_indices}，已完成: {completed_indices}", "MultiAgent")
-        writer(Step.PLANNER_DISPATCH.completed_event(detail=f"分发 {len(ready_indices)} 个子任务"))
+        writer(Step.PLANNER_DISPATCH.completed_event(detail=f"分发：{dispatch_desc}"))
 
         return {"__ready_indices__": ready_indices}
 

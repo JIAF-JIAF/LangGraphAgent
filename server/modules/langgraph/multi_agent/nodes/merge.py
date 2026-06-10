@@ -95,7 +95,7 @@ class MergeNode:
         query = state["query"]
         agent_results = state.get("agent_results", [])
 
-        writer(Step.MERGE.started_event())
+        writer(Step.MERGE.started_event(detail=f"合并 {len(agent_results)} 个 Expert 结果"))
         log(f"[MergeNode] 合并 {len(agent_results)} 个 Expert 结果", "MultiAgent")
 
         # 统一 Planner 路由后，所有 Expert 结果都带有 subtask_idx
@@ -123,7 +123,7 @@ class MergeNode:
             answer = self._refine_with_llm(query, combined_content, state)
             log(f"[MergeNode] 润色完成: {answer[:50]}...", "MultiAgent")
 
-        writer(Step.MERGE.completed_event())
+        writer(Step.MERGE.completed_event(detail=f"完成（{len(answer)} 字）"))
 
         return {
             "answer": answer,

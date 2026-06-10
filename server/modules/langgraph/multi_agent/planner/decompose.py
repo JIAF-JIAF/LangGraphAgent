@@ -61,7 +61,7 @@ class PlannerDecomposeNode:
         query = state["query"]
         intents = state.get("intents", [])
 
-        writer(Step.PLANNER_DECOMPOSE.started_event())
+        writer(Step.PLANNER_DECOMPOSE.started_event(detail=f"分解任务：{query[:40]}"))
         log(f"[PlannerDecompose] 分解任务: {query[:50]}...", "MultiAgent")
 
         # 分离意图
@@ -80,7 +80,11 @@ class PlannerDecomposeNode:
             subtasks = self._build_fallback_subtask(query)
             log("[PlannerDecompose] 无子任务，回退到 chat", "MultiAgent")
 
-        writer(Step.PLANNER_DECOMPOSE.completed_event(detail=f"{len(subtasks)} 个子任务"))
+        subtask_desc = "、".join(
+            f"{s.get('category', '?')}:{s.get('description', '')[:15]}"
+            for s in subtasks
+        )
+        writer(Step.PLANNER_DECOMPOSE.completed_event(detail=f"{len(subtasks)} 个子任务：{subtask_desc}"))
 
         return {
             "planned_subtasks": subtasks,

@@ -181,7 +181,7 @@ class ExpertPlugin(ABC):
 
     # ===== 辅助方法（子类可复用）=====
 
-    def _invoke_agent(self, agent, input_text: str, context) -> str:
+    def _invoke_agent(self, agent, input_text: str, context, started_detail: str = "") -> str:
         """
         调用 Agent 并推送事件
 
@@ -191,13 +191,15 @@ class ExpertPlugin(ABC):
             agent: Agent 实例
             input_text: 输入文本
             context: AgentContext 实例
+            started_detail: started 事件的详情（可选，如"处理：查询天气"）
 
         Returns:
             Agent 回答文本
         """
-        push_step_event(self.meta, "started")
+        push_step_event(self.meta, "started", detail=started_detail)
         answer = invoke_agent_safely(agent, input_text, context)
-        push_step_event(self.meta, "completed")
+        completed_detail = f"完成（{len(answer)} 字）" if answer else "完成"
+        push_step_event(self.meta, "completed", detail=completed_detail)
         return answer
 
     def _build_result(

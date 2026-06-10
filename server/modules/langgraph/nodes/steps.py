@@ -25,23 +25,58 @@ class DynamicStep:
     """
 
     def __init__(self, step: str, label: str, icon: str):
+        """
+        初始化动态步骤
+
+        Args:
+            step: 步骤标识，如 "code_expert"
+            label: 显示名称，如 "代码生成 Agent"
+            icon: 图标，如 "💻"
+        """
         self._step = step
         self._label = label
         self._icon = icon
 
     @property
     def step(self):
+        """
+        步骤标识
+
+        Returns:
+            步骤标识字符串，如 "code_expert"
+        """
         return self._step
 
     @property
     def label(self):
+        """
+        显示名称
+
+        Returns:
+            步骤显示名称，如 "代码生成 Agent"
+        """
         return self._label
 
     @property
     def icon(self):
+        """
+        步骤图标
+
+        Returns:
+            步骤图标字符串，如 "💻"
+        """
         return self._icon
 
     def started_event(self, detail=""):
+        """
+        生成 STEP_STARTED 事件字典
+
+        Args:
+            detail: 可选详情，如 "分析用户输入：查询天气"
+
+        Returns:
+            供 get_stream_writer 推送的事件字典
+        """
         event = {
             "step": self._step,
             "status": StepStatus.STARTED,
@@ -52,7 +87,34 @@ class DynamicStep:
             event["detail"] = detail
         return event
 
+    def progress_event(self, detail=""):
+        """
+        生成 STEP_PROGRESS 事件字典（中间进度）
+
+        Args:
+            detail: 进度详情
+
+        Returns:
+            供 get_stream_writer 推送的事件字典
+        """
+        return {
+            "step": self._step,
+            "status": StepStatus.PROGRESS,
+            "label": self._label,
+            "icon": self._icon,
+            "detail": detail,
+        }
+
     def completed_event(self, detail=""):
+        """
+        生成 STEP_COMPLETED 事件字典
+
+        Args:
+            detail: 完成详情，如 "检测到情绪：positive，强度 7"
+
+        Returns:
+            供 get_stream_writer 推送的事件字典
+        """
         return {
             "step": self._step,
             "status": StepStatus.COMPLETED,
@@ -121,20 +183,46 @@ class Step(Enum):
     MERGE = ("merge", "结果整合", "🔗")
 
     def __init__(self, step, label, icon):
+        """
+        初始化枚举成员
+
+        Args:
+            step: 步骤标识，如 "feeling_detect"
+            label: 显示名称，如 "情绪分析"
+            icon: 图标，如 "😊"
+        """
         self._step = step
         self._label = label
         self._icon = icon
 
     @property
     def step(self):
+        """
+        步骤标识
+
+        Returns:
+            步骤标识字符串，如 "feeling_detect"
+        """
         return self._step
 
     @property
     def label(self):
+        """
+        显示名称
+
+        Returns:
+            步骤显示名称，如 "情绪分析"
+        """
         return self._label
 
     @property
     def icon(self):
+        """
+        步骤图标
+
+        Returns:
+            步骤图标字符串，如 "😊"
+        """
         return self._icon
 
     def started_event(self, detail=""):
@@ -157,12 +245,30 @@ class Step(Enum):
             event["detail"] = detail
         return event
 
+    def progress_event(self, detail=""):
+        """
+        生成 STEP_PROGRESS 事件字典（中间进度）
+
+        Args:
+            detail: 进度详情，如 "检索知识库：product_docs"
+
+        Returns:
+            供 get_stream_writer 推送的事件字典
+        """
+        return {
+            "step": self._step,
+            "status": StepStatus.PROGRESS,
+            "label": self._label,
+            "icon": self._icon,
+            "detail": detail,
+        }
+
     def completed_event(self, detail=""):
         """
         生成 STEP_COMPLETED 事件字典
 
         Args:
-            detail: 完成详情
+            detail: 完成详情，如 "检测到情绪：positive，强度 7"
 
         Returns:
             供 get_stream_writer 推送的事件字典

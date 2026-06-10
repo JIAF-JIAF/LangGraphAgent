@@ -17,6 +17,7 @@ class EventType(str, Enum):
     """
 
     STEP_STARTED = "STEP_STARTED"
+    STEP_PROGRESS = "STEP_PROGRESS"
     STEP_FINISHED = "STEP_FINISHED"
     TEXT_MESSAGE_CONTENT = "TEXT_MESSAGE_CONTENT"
     RUN_FINISHED = "RUN_FINISHED"
@@ -31,4 +32,5 @@ class StepStatus(str, Enum):
     """
 
     STARTED = "started"
+    PROGRESS = "progress"
     COMPLETED = "completed"

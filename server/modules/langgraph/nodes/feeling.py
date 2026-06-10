@@ -35,11 +35,13 @@ class FeelingNode:
         writer = get_stream_writer()
         query = state["query"]
 
-        writer(Step.FEELING_DETECT.started_event())
+        writer(Step.FEELING_DETECT.started_event(detail=f"分析用户输入：{query[:30]}"))
         log(f"[节点: {Step.FEELING_DETECT.step}] 开始执行，查询: {query[:30]}...", "LangGraph")
 
         feeling = self._detector.detect(query)
-        detail = f"{feeling.get('feeling', 'default')} ({feeling.get('score', 5)})"
+        feeling_name = feeling.get('feeling', 'default')
+        feeling_score = feeling.get('score', 5)
+        detail = f"检测到情绪：{feeling_name}，强度 {feeling_score}"
         writer(Step.FEELING_DETECT.completed_event(detail=detail))
         log(f"[节点: {Step.FEELING_DETECT.step}] 情绪分析结果: {feeling}", "LangGraph")
 

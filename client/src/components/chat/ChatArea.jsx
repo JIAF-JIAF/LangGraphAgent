@@ -2,11 +2,11 @@ import { memo, useState } from 'react';
 import './ChatArea.css';
 
 const ThinkingSteps = memo(({ steps }) => {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   if (!steps || steps.length === 0) return null;
 
-  const hasActiveStep = steps.some((s) => s.status === 'started');
+  const hasActiveStep = steps.some((s) => s.status === 'started' || s.status === 'progress');
 
   return (
     <div className="thinking-steps">
@@ -26,11 +26,21 @@ const ThinkingSteps = memo(({ steps }) => {
             <div key={step.step} className={`thinking-step ${step.status}`}>
               <span className="step-icon">{step.icon}</span>
               <span className="step-label">{step.label}</span>
-              {step.status === 'started' && (
+              {(step.status === 'started' || step.status === 'progress') && (
                 <span className="step-spinner" />
               )}
+              {step.status === 'started' && step.detail && (
+                <span className="step-detail step-detail-started">{step.detail}</span>
+              )}
+              {step.status === 'progress' && step.progressList && step.progressList.length > 0 && (
+                <div className="step-progress-list">
+                  {step.progressList.map((p, i) => (
+                    <div key={i} className="step-progress-item">{p}</div>
+                  ))}
+                </div>
+              )}
               {step.status === 'completed' && step.detail && (
-                <span className="step-detail">{step.detail}</span>
+                <span className="step-detail step-detail-completed">{step.detail}</span>
               )}
             </div>
           ))}

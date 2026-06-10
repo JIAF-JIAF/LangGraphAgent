@@ -7,6 +7,7 @@
 
 export const EventType = Object.freeze({
   STEP_STARTED: "STEP_STARTED",
+  STEP_PROGRESS: "STEP_PROGRESS",
   STEP_FINISHED: "STEP_FINISHED",
   TEXT_MESSAGE_CONTENT: "TEXT_MESSAGE_CONTENT",
   RUN_FINISHED: "RUN_FINISHED",
@@ -15,5 +16,6 @@ export const EventType = Object.freeze({
 
 export const StepStatus = Object.freeze({
   STARTED: "started",
+  PROGRESS: "progress",
   COMPLETED: "completed",
 });
