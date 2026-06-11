@@ -20,6 +20,7 @@ Manifest 驱动架构：
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
+from langgraph.config import get_stream_writer
 from modules.langgraph.multi_agent.meta import ExpertMeta
 from modules.langgraph.multi_agent.manifest import PluginManifest
 from modules.langgraph.multi_agent.helpers import (
@@ -29,6 +30,7 @@ from modules.langgraph.multi_agent.helpers import (
     build_agent_result,
 )
 from modules.langgraph.context_builder import ContextBuilder
+from modules.langgraph.multi_agent.thinking_streamer import ThinkingStreamer
 from modules.intent.intent_types import IntentCategory
 
 
@@ -183,9 +185,11 @@ class ExpertPlugin(ABC):
 
     def _invoke_agent(self, agent, input_text: str, context, started_detail: str = "") -> str:
         """
-        调用 Agent 并推送事件
+        调用 Agent 并推送事件（流式思考输出）
 
-        封装事件推送 + Agent 调用，子类只需传入 agent/input/context。
+        封装事件推送 + Agent 流式调用，子类只需传入 agent/input/context。
+        Agent 的 LLM 输出会逐 token 推送 STEP_THINKING 事件。
+        ThinkingStreamer 内部通过 get_stream_writer() 获取 writer，业务层无需传递。
 
         Args:
             agent: Agent 实例
@@ -197,7 +201,7 @@ class ExpertPlugin(ABC):
             Agent 回答文本
         """
         push_step_event(self.meta, "started", detail=started_detail)
-        answer = invoke_agent_safely(agent, input_text, context)
+        answer = ThinkingStreamer.stream_agent(agent, input_text, context, self.meta)
         completed_detail = f"完成（{len(answer)} 字）" if answer else "完成"
         push_step_event(self.meta, "completed", detail=completed_detail)
         return answer

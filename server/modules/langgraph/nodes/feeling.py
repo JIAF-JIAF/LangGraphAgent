@@ -36,6 +36,7 @@ class FeelingNode:
         query = state["query"]
 
         writer(Step.FEELING_DETECT.started_event(detail=f"分析用户输入：{query[:30]}"))
+        writer(Step.FEELING_DETECT.progress_event(detail="正在调用情绪检测模型..."))
         log(f"[节点: {Step.FEELING_DETECT.step}] 开始执行，查询: {query[:30]}...", "LangGraph")
 
         feeling = self._detector.detect(query)

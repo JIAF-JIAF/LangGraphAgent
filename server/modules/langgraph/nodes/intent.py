@@ -37,6 +37,7 @@ class IntentRecognizeNode:
         query_preview = query[:30] if len(query) > 30 else query
 
         writer(Step.INTENT_RECOGNIZE.started_event(detail=f"识别用户意图：{query_preview}"))
+        writer(Step.INTENT_RECOGNIZE.progress_event(detail="正在分析用户意图..."))
         log(f"[节点: {Step.INTENT_RECOGNIZE.step}] 开始意图识别: {query_preview}...", "LangGraph")
 
         if not self._router:

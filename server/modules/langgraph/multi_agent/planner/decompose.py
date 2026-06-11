@@ -62,6 +62,7 @@ class PlannerDecomposeNode:
         intents = state.get("intents", [])
 
         writer(Step.PLANNER_DECOMPOSE.started_event(detail=f"分解任务：{query[:40]}"))
+        writer(Step.PLANNER_DECOMPOSE.progress_event(detail="正在分析意图并分解子任务..."))
         log(f"[PlannerDecompose] 分解任务: {query[:50]}...", "MultiAgent")
 
         # 分离意图

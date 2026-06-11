@@ -17,6 +17,7 @@ class SSEEventProcessor:
     _STATUS_TO_EVENT: dict[StepStatus, EventType] = {
         StepStatus.STARTED: EventType.STEP_STARTED,
         StepStatus.PROGRESS: EventType.STEP_PROGRESS,
+        StepStatus.THINKING: EventType.STEP_THINKING,
         StepStatus.COMPLETED: EventType.STEP_FINISHED,
     }
 

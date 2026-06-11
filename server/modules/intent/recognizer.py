@@ -8,11 +8,14 @@ LLM 意图识别器
 import json
 import re
 from typing import List, Dict, Any, Optional
+
 from langchain_core.messages import HumanMessage
 
 from .intent_types import Intent, IntentCategory, IntentConstants
 from .intent_registry import IntentRegistry
 from modules.logger import log, exception
+from modules.langgraph.multi_agent.thinking_streamer import ThinkingStreamer
+from modules.langgraph.nodes.steps import Step
 
 
 class IntentRecognizer:
@@ -42,10 +45,14 @@ class IntentRecognizer:
     def recognize(self, query: str) -> List[Intent]:
         """
         识别用户意图
-        
+
+        结构化输出（JSON）不应作为 THINKING 推送，用户不需要看到原始 JSON。
+        节点层的 PROGRESS（"正在分析用户意图..."）和 COMPLETED（"识别到 N 个意图：..."）
+        已经提供了足够的进度反馈和结果展示。
+
         Args:
             query: 用户请求
-            
+
         Returns:
             意图列表（可能包含多个意图）
         """
@@ -54,8 +61,11 @@ class IntentRecognizer:
         prompt = self._build_prompt(query)
         
         try:
-            response = self.llm.chat.invoke([HumanMessage(content=prompt)])
-            intents = self._parse_response(query, response.content)
+            response_content = ThinkingStreamer.stream_llm_structured(
+                self.llm.chat, [HumanMessage(content=prompt)]
+            )
+
+            intents = self._parse_response(query, response_content)
             
             log(f"识别到 {len(intents)} 个意图", module="Intent.Recognizer")
             for intent in intents:

@@ -66,6 +66,7 @@ open http://localhost:5173
 
 | 技术 | 实现说明 |
 |------|----------|
+| **ThinkingStreamer** | 统一流式思考组件，业务层不感知 writer，内部通过 `get_stream_writer()` 自动推送 STEP_THINKING 事件；结构化输出与自然语言思考分离 |
 | **Manifest 驱动架构** | 基于 PLUGIN.yaml 声明式配置，路由规则、意图声明、Prompt 模板均从配置文件动态加载，新增 Expert 时无需修改框架代码 |
 | **分层漏斗路由** | L1 关键词匹配（<1ms）→ L2 向量语义（保留入口）→ L3 LLM Function Calling，按优先级依次尝试匹配 |
 | **Orchestrator-Worker 编排** | Supervisor 统一路由 → Planner 分解任务 + 波次调度 → Expert 并行执行 → Merge 合并润色，支持依赖关系的子任务调度 |
@@ -354,8 +355,9 @@ prompt:
 | 事件类型 | 说明 |
 |----------|------|
 | STEP_STARTED | 节点开始执行 |
+| STEP_THINKING | 节点思考过程（逐 token 推送，打字机效果） |
 | STEP_FINISHED | 节点执行完成 |
-| TEXT_MESSAGE_CONTENT | LLM 逐 token 输出（打字机效果） |
+| TEXT_MESSAGE_CONTENT | LLM 逐 token 输出最终回答（打字机效果，全速） |
 | RUN_FINISHED | 整体运行完成 |
 | RUN_ERROR | 运行异常 |
 

@@ -22,6 +22,7 @@ from langgraph.config import get_stream_writer
 from modules.logger import log
 from modules.langgraph.nodes.steps import Step
 from modules.langgraph.context_builder import ContextBuilder
+from modules.langgraph.multi_agent.thinking_streamer import ThinkingStreamer
 
 
 MERGE_REFINE_PROMPT = """你是一个回答润色专家。请根据以下信息，结合用户的情绪状态，生成一个自然、友好的回复。
@@ -245,9 +246,9 @@ class MergeNode:
         )
 
         try:
-            response = self._ai_client.chat.invoke(prompt)
-            answer = response.content if hasattr(response, "content") else str(response)
-            return answer
+            return ThinkingStreamer.stream_llm_structured(
+                self._ai_client.chat, prompt
+            )
         except Exception as e:
             log(f"[MergeNode] Chat Experts 整合润色失败: {e}，使用原始拼接", "MultiAgent")
             return content
@@ -280,10 +281,9 @@ class MergeNode:
         )
 
         try:
-            # 直接调用 LLM，不经过 Agent（无工具绑定）
-            response = self._ai_client.chat.invoke(prompt)
-            answer = response.content if hasattr(response, "content") else str(response)
-            return answer
+            return ThinkingStreamer.stream_llm_structured(
+                self._ai_client.chat, prompt
+            )
         except Exception as e:
             log(f"[MergeNode] LLM 润色失败: {e}，使用原始内容", "MultiAgent")
             # 润色失败时，直接拼接结果

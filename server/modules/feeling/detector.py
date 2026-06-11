@@ -8,6 +8,8 @@ from typing import Dict, Optional, Any
 import json
 
 from modules.logger import log, exception
+from modules.langgraph.multi_agent.thinking_streamer import ThinkingStreamer
+from modules.langgraph.nodes.steps import Step
 
 
 class FeelingDetector:
@@ -128,6 +130,10 @@ class FeelingDetector:
         """
         使用 LLM 进行情绪分析（增强模式）
 
+        结构化输出（JSON）不应作为 THINKING 推送，用户不需要看到原始 JSON。
+        节点层的 PROGRESS（"正在调用情绪检测模型..."）和 COMPLETED（"检测到情绪：cheerful (8/10)"）
+        已经提供了足够的进度反馈和结果展示。
+
         Args:
             text: 输入文本
 
@@ -158,14 +164,15 @@ class FeelingDetector:
         请根据以上规则分析情绪并返回相应的feeling和score，只返回JSON格式。"""
 
         try:
-            response = self.llm_client.chat.invoke(prompt)
-            content = response.content
-            
+            content = ThinkingStreamer.stream_llm_structured(
+                self.llm_client.chat, prompt
+            )
+
             json_match = re.search(r'\{[^{}]*"feeling"[^{}]*"score"[^{}]*\}', content)
             if json_match:
                 result = json.loads(json_match.group())
                 return result
-            
+
             result = json.loads(content)
             return result
         except Exception as e:
@@ -178,16 +185,12 @@ class FeelingDetector:
 
         Args:
             text: 用户输入文本
-            use_llm: 是否使用 LLM 进行增强分析
 
         Returns:
             情绪分析结果 {"feeling": str, "score": int}
         """
         if not text or not isinstance(text, str):
             return {"feeling": "default", "score": 5}
-
-        # rule_result = self._analyze_by_rules(text)
-        # if rule_result: return rule_result
 
         llm_result = self._analyze_by_llm(text)
         if llm_result: return llm_result

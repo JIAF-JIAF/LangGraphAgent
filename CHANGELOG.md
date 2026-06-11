@@ -7,6 +7,49 @@
 
 ---
 
+## [2.1.1] - 2026-06-11
+
+### Added
+- **ThinkingStreamer 流式思考组件**（`thinking_streamer.py`）
+  - `stream_llm()`：LLM 流式调用，逐 token 推送 STEP_THINKING 事件（用于自然语言思考过程）
+  - `stream_llm_structured()`：LLM 流式收集结构化输出（JSON），不推送 THINKING 事件（用于 FeelingDetector / IntentRecognizer）
+  - `stream_llm_with_progress()`：LLM 流式调用 + 进度提示推送（用于 DecomposeNode）
+  - `stream_agent()`：Agent 流式调用，支持 astream 逐 token 推送，invoke 回退时不推送（回答由 merge 输出）
+  - `_push()` / `_push_thinking()`：内部通用事件推送方法，消除重复代码
+  - `StreamEvent` 数据类：统一 Agent 流式输出协议
+- **SSE 事件类型扩展**
+  - 新增 `STEP_THINKING` 事件类型（基于 AG-UI 协议）
+  - 新增 `StepStatus.THINKING` 枚举值
+  - `SSEProcessor` 新增 `THINKING → STEP_THINKING` 映射
+- **E2E 自动化测试**（`test_e2e.js`）
+  - 8 个真实场景测试用例（Chat / MCP / RAG / Skill / 多意图组合）
+  - 验证全链路事件推送（feeling → intent → supervisor → decompose → dispatch → expert → merge）
+
+### Changed
+- **业务层与流式细节解耦**（核心架构改进）
+  - `FeelingDetector._analyze_by_llm()`：删除 `writer` 参数，改用 `ThinkingStreamer.stream_llm_structured()`
+  - `IntentRecognizer.recognize()`：删除 `writer` 参数，改用 `ThinkingStreamer.stream_llm_structured()`
+  - `IntentRouter.route()` / `_match_by_llm()`：删除 `writer` 参数
+  - `MergeNode._refine_chat_experts_with_llm()` / `_refine_with_llm()`：改用 `ThinkingStreamer.stream_llm_structured()`
+  - `ExpertPlugin._invoke_agent()`：删除 `writer` 参数，改用 `ThinkingStreamer.stream_agent()`
+  - `FeelingNode.__call__()` / `IntentNode.__call__()`：不再向业务层传递 `writer`
+  - 业务层完全不感知 `get_stream_writer()`，由 ThinkingStreamer 内部管理
+- **思考过程与最终结果分离**
+  - 结构化输出（FeelingDetector JSON / IntentRecognizer JSON）不再作为 THINKING 推送，用户看到的是节点 COMPLETED 事件中的摘要
+  - Expert Agent 的回答不再作为 THINKING 推送，最终结果由 LangGraph messages 流的 TEXT_MESSAGE_CONTENT 逐 token 输出（全速）
+  - Merge 节点不再推送 STEP_THINKING，避免与 TEXT_MESSAGE_CONTENT 双路重复输出
+- **Skill Agent Prompt 优化**
+  - 新增规则：必须直接执行技能，不反问用户或等待确认
+  - 新增规则：收到请求后立即调用工具执行，不先解释将要做什么
+
+### Fixed
+- **LLM 同步调用导致思考过程空白**：节点使用 `llm.invoke()` 阻塞执行，期间无法推送事件。改为 `llm.stream()` 逐 token 推送
+- **结构化输出暴露给用户**：情绪分析/意图识别的原始 JSON 作为 THINKING 推送，用户体验差。改为 `stream_llm_structured()` 不推送
+- **Expert 回答重复输出**：Agent 回答同时走 STEP_THINKING 和 TEXT_MESSAGE_CONTENT 两条路径，导致重复且降速。改为只走 TEXT_MESSAGE_CONTENT
+- **Skill Agent 反问用户**：收到绘图请求后反问用户而非直接执行。Prompt 新增强制执行规则
+
+---
+
 ## [2.1.0] - 2026-06-09
 
 ### Added
