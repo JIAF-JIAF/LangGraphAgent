@@ -2,7 +2,7 @@
 工具管理器模块
 
 提供统一的工具注册和获取接口，整合：
-- MCP 工具（从 mcp_module 获取）
+- MCP 工具（从 mcp 模块获取）
 - 技能工具（从 skill 模块获取）
 
 设计目的：
@@ -17,7 +17,7 @@ from langchain_core.tools import BaseTool
 
 from modules.skill import SkillManager
 from modules.logger import log
-from mcp_module import MCPToolService
+from modules.mcp import MCPToolService
 
 
 class ToolManager:

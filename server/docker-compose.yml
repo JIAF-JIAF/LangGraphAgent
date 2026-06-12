@@ -34,10 +34,11 @@ services:
 
   mcp:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: server/Dockerfile
     container_name: agent-mcp
-    command: python mcp_module/start.py
+    working_dir: /app
+    command: python mcp_server/start.py
     ports:
       - "8888:8080"
     environment:
@@ -57,9 +58,11 @@ services:
 
   app:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: server/Dockerfile
     container_name: agent-app
+    working_dir: /app/server
+    command: python app.py
     depends_on:
       consul:
         condition: service_healthy
@@ -92,9 +95,10 @@ services:
 
   db:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: server/Dockerfile
     container_name: agent-db
+    working_dir: /app/server
     command: python db.py
     restart: unless-stopped
     ports:

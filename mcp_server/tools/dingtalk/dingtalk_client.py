@@ -4,7 +4,7 @@
 import os
 import requests
 from typing import Optional, Dict, Any
-from mcp_module.logger import info, error
+from mcp_server.logger import info, error
 from dotenv import load_dotenv
 
 # 加载环境变量

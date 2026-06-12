@@ -5,9 +5,9 @@ MCP 服务器核心模块
 
 from mcp.server import FastMCP
 
-from mcp_module.tools.registry import get_registered_tools
-import mcp_module.logger as logger
-import mcp_module.config as config
+from mcp_server.tools.registry import get_registered_tools
+import mcp_server.logger as logger
+import mcp_server.config as config
 
 _server = FastMCP(
     name="ChartFlowMCP",

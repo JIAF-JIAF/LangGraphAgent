@@ -1,9 +1,9 @@
 """
 钉钉日程删除工具
 """
-from mcp_module.tools.registry import register_tool
-from mcp_module.tools.dingtalk.dingtalk_client import get_dingtalk_client
-from mcp_module.logger import info, error
+from mcp_server.tools.registry import register_tool
+from mcp_server.tools.dingtalk.dingtalk_client import get_dingtalk_client
+from mcp_server.logger import info, error
 
 
 @register_tool(

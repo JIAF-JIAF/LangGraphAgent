@@ -23,7 +23,7 @@ from modules.langgraph.multi_agent.tools.mcp_tools import get_mcp_tools, mcp_exe
 from modules.langgraph.multi_agent.expert_agent_factory import MCP_SYSTEM_PROMPT, _build_expert_prompt
 from modules.assistant import Agent
 from modules.intent.intent_types import IntentCategory
-from mcp_module import MCPToolService
+from modules.mcp import MCPToolService
 
 
 class MCPPlugin(ExpertPlugin):

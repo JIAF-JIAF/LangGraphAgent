@@ -3,8 +3,8 @@
 """
 
 import random
-from mcp_module.tools.registry import register_tool
-from mcp_module.logger import info
+from mcp_server.tools.registry import register_tool
+from mcp_server.logger import info
 
 
 weather_map = {

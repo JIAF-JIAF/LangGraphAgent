@@ -505,16 +505,19 @@ LangGraphAgent/
 │   │   │   ├── executor.py          # 技能执行器
 │   │   │   └── indexer.py           # 技能向量索引
 │   │   ├── feeling/                 # 情绪感知模块
+│   │   ├── mcp/                     # MCP 客户端（连接远程 MCP 服务器）
+│   │   │   ├── client.py            # MCPToolService（工具获取/缓存/重载）
+│   │   │   └── config_manager.py    # mcp_servers.yaml 配置管理
 │   │   ├── checkpoint/              # 检查点存储（Memory / Redis）
 │   │   ├── document_loaders/        # 文档加载器（PDF / Word / Excel / Text）
 │   │   ├── rate_limit/              # 限流模块
 │   │   ├── sse/                     # SSE 流式响应（AG-UI 协议）
 │   │   ├── ai_client.py             # AI 客户端（兼容 OpenAI SDK）
 │   │   └── factory.py               # 工厂函数（组件初始化）
-│   ├── mcp_module/                  # MCP 工具服务（独立部署）
+│   ├── mcp_server/                # MCP 工具服务（独立部署）
 │   │   ├── mcp_server.py            # MCP 服务器核心（FastMCP + Streamable HTTP）
-│   │   ├── mcp_service.py           # MCP 服务封装
-│   │   ├── mcp_config_manager.py    # MCP 配置管理
+│   │   ├── config.py                # MCP 服务器配置
+│   │   ├── logger.py                # 日志模块
 │   │   └── tools/                   # 工具插件目录
 │   │       ├── registry.py          # 工具注册表
 │   │       ├── weather_plugin.py    # 天气查询

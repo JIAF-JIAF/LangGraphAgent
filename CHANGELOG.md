@@ -7,6 +7,20 @@
 
 ---
 
+## [2.1.2] - 2026-06-12
+
+### Changed
+- **MCP 模块架构拆分**：`mcp_service/` → `mcp_server/` + `server/modules/mcp/`
+  - `mcp_server/`：独立 MCP 服务器（FastMCP + 工具插件），纯服务端
+  - `server/modules/mcp/`：MCP 客户端（MCPToolService + 配置管理），属于 server 内部模块
+  - 解决 MCPToolService（客户端）与 MCP Server（服务端）职责混淆问题
+  - `from mcp_service import MCPToolService` → `from modules.mcp import MCPToolService`
+  - `from mcp_service.mcp_config_manager` → `from modules.mcp.config_manager`
+  - `mcp_server/config.py` 环境变量增加默认值，避免未设置时 TypeError
+  - 修复 `config_manager.py` 配置文件路径解析错误（4 层 dirname → 3 层）
+
+---
+
 ## [2.1.1] - 2026-06-11
 
 ### Added

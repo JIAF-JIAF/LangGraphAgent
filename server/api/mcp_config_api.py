@@ -5,7 +5,7 @@ MCP 服务器配置 API
 """
 
 from flask import Blueprint, request, jsonify
-from mcp_module.mcp_config_manager import mcp_config_manager
+from modules.mcp.config_manager import mcp_config_manager
 
 mcp_config_bp = Blueprint('mcp_config', __name__, url_prefix='/mcp')
 

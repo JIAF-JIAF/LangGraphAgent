@@ -17,7 +17,7 @@ MCP 工具列表是动态的（通过 URL 从 MCP 服务器获取，可增删配
 
 from typing import List
 from langchain_core.tools import BaseTool, tool
-from mcp_module import MCPToolService
+from modules.mcp import MCPToolService
 from modules.langgraph.executors.registry import ExecutorRegistry
 from modules.logger import log
 
